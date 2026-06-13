@@ -29,11 +29,14 @@
                 <div class="ring"></div>
                 <div class="ring"></div>
                 <div class="ring"></div>
-                <div class="center"><i data-lucide="radio" class="icon-pulse"></i></div>
+                <div class="center"><i data-lucide="wifi" class="icon-pulse"></i></div>
             </div>
             <div class="modal-title">Connect to VILY</div>
-            <div class="modal-desc">Make sure your VILY robot is powered on and nearby. Bluetooth will be used to pair.</div>
-            <button class="modal-btn primary" id="modal-connect-btn"><i data-lucide="bolt" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect</button>
+            <div class="modal-desc">Enter VILY's IP address or hostname. Make sure your device is connected to the same WiFi network or VILY's hotspot.</div>
+            <div class="wifi-input-group" style="width: 100%; margin: 15px 0;">
+                <input type="text" id="wifi-ip-input" class="quiz-topic-input" style="width: 100%; text-align: center; border: 1px solid rgba(108, 92, 231, 0.3); border-radius: 8px; padding: 10px; background: rgba(255, 255, 255, 0.05); color: var(--text-primary);" placeholder="vily.local or 192.168.4.1">
+            </div>
+            <button class="modal-btn primary" id="modal-connect-btn"><i data-lucide="wifi" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect</button>
             <button class="modal-btn secondary" id="modal-cancel-btn">Cancel</button>
         </div>
     </div>
@@ -103,7 +106,7 @@
                 </button>
             </div>
             <div class="sidebar-bottom">
-                <div class="sidebar-ble-dot" id="ble-dot" title="BLE Status"></div>
+                <div class="sidebar-ble-dot" id="ble-dot" title="WiFi Status"></div>
                 <span class="sidebar-battery" id="battery-text">--</span>
             </div>
         </nav>
@@ -122,8 +125,9 @@
                         <span class="dot"></span>
                         <span id="ai-provider-name">Gemini</span>
                     </button>
+                    <span class="topbar-battery" id="topbar-battery-text" style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-right: 2px; display: none;">--</span>
                     <button class="top-bar-icon-btn" id="ble-status-tap" title="Connection">
-                        <i data-lucide="bluetooth"></i>
+                        <i data-lucide="wifi"></i>
                     </button>
                     <button class="top-bar-icon-btn" id="theme-toggle-btn" title="Toggle Theme">
                         <i data-lucide="sun" class="sun-icon"></i>
@@ -577,10 +581,10 @@
                         <div class="settings-group-title">Connection</div>
                         <div class="settings-list">
                             <button class="setting-item" id="setting-connect">
-                                <div class="setting-icon blue"><i data-lucide="bluetooth"></i></div>
+                                <div class="setting-icon blue"><i data-lucide="wifi"></i></div>
                                 <div class="setting-text">
-                                    <div class="title">Bluetooth</div>
-                                    <div class="desc">Connect or disconnect VILY</div>
+                                    <div class="title">WiFi Connection</div>
+                                    <div class="desc">Connect or disconnect VILY via WiFi</div>
                                 </div>
                                 <span class="setting-arrow"><i data-lucide="chevron-right"></i></span>
                             </button>
@@ -736,7 +740,7 @@
     </div>
 
     <!-- Scripts -->
-    <script src="ble.js?v=2.0.0"></script>
+    <script src="wifi.js?v=2.0.0"></script>
     <script src="joystick.js?v=2.0.0"></script>
     <script src="sound.js?v=2.0.0"></script>
     <script src="three_view.js?v=2.0.0"></script>

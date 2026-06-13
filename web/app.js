@@ -451,6 +451,8 @@ class VilyApp {
         ble.onDisconnect = () => {
             this.connected = false;
             this.updateConnectionUI(false);
+            this.batteryPercent = -1;
+            this.updateBatteryUI(-1);
             this.showToast('Disconnected from VILY');
             this.face.setMood('sad');
         };
@@ -479,19 +481,27 @@ class VilyApp {
     
     async connectBLE() {
         const btn = document.getElementById('modal-connect-btn');
+        const ipInput = document.getElementById('wifi-ip-input');
+        const ipAddress = ipInput ? ipInput.value.trim() : 'vily.local';
+        
+        if (!ipAddress) {
+            this.showToast('Please enter an IP address or hostname');
+            return;
+        }
+        
+        localStorage.setItem('vily-ip-address', ipAddress);
+        
         btn.classList.add('connecting');
         btn.innerHTML = '<i class="icon-pulse">📡</i> Connecting...';
         
         try {
-            await ble.connect();
+            await ble.connect(ipAddress);
             this.hideConnectModal();
         } catch (err) {
             btn.classList.remove('connecting');
-            btn.innerHTML = '<i data-lucide="bolt" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect';
+            btn.innerHTML = '<i data-lucide="wifi" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect';
             if (typeof lucide !== 'undefined') lucide.createIcons();
-            if (!err.message.includes('cancelled')) {
-                this.showToast('Connection failed. Try again.');
-            }
+            this.showToast('Connection failed. Try again.');
         }
     }
     
@@ -501,23 +511,39 @@ class VilyApp {
     }
     
     showConnectModal() {
-        document.getElementById('connect-modal').classList.add('show');
+        const modal = document.getElementById('connect-modal');
+        modal.classList.add('show');
+        
+        // Pre-fill IP address from localStorage
+        const ipInput = document.getElementById('wifi-ip-input');
+        if (ipInput) {
+            ipInput.value = localStorage.getItem('vily-ip-address') || 'vily.local';
+        }
     }
     
     hideConnectModal() {
         document.getElementById('connect-modal').classList.remove('show');
         const btn = document.getElementById('modal-connect-btn');
         btn.classList.remove('connecting');
-        btn.innerHTML = '<i data-lucide="bolt" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect';
+        btn.innerHTML = '<i data-lucide="wifi" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect';
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
     
     updateConnectionUI(connected) {
         const dot = document.getElementById('ble-dot');
+        const tapBtn = document.getElementById('ble-status-tap');
         if (connected) {
-            dot.classList.add('on');
+            if (dot) dot.classList.add('on');
+            if (tapBtn) {
+                tapBtn.style.color = '#00b894'; // var(--accent-green)
+                tapBtn.style.filter = 'drop-shadow(0 0 8px rgba(0, 184, 148, 0.4))';
+            }
         } else {
-            dot.classList.remove('on');
+            if (dot) dot.classList.remove('on');
+            if (tapBtn) {
+                tapBtn.style.color = '';
+                tapBtn.style.filter = '';
+            }
         }
     }
     
@@ -525,6 +551,15 @@ class VilyApp {
         const el = document.getElementById('battery-text');
         if (el) {
             el.textContent = percent >= 0 ? `${percent}%` : '--';
+        }
+        const el2 = document.getElementById('topbar-battery-text');
+        if (el2) {
+            if (percent >= 0) {
+                el2.textContent = `${percent}%`;
+                el2.style.display = 'inline';
+            } else {
+                el2.style.display = 'none';
+            }
         }
     }
     

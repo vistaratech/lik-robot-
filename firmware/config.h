@@ -18,17 +18,14 @@
 #define FIRMWARE_VERSION    1
 
 // ─────────────────────────────────────────────
-//  BLE UUIDs (Custom 128-bit)
+//  WiFi & WebServer Configuration
 // ─────────────────────────────────────────────
-// Main Robot Control Service
-#define SERVICE_UUID                "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-
-// Characteristics
-#define CHAR_MOTOR_CMD_UUID         "beb5483e-36e1-4688-b7f5-ea07361b26a8"  // Write — Motor commands
-#define CHAR_MOTOR_STATUS_UUID      "beb5483f-36e1-4688-b7f5-ea07361b26a8"  // Notify — Motor status
-#define CHAR_LED_CONTROL_UUID       "beb54840-36e1-4688-b7f5-ea07361b26a8"  // Write — LED control
-#define CHAR_BATTERY_UUID           "beb54841-36e1-4688-b7f5-ea07361b26a8"  // Read/Notify — Battery
-#define CHAR_HANDSHAKE_UUID         "beb54842-36e1-4688-b7f5-ea07361b26a8"  // Write/Read — Handshake
+#define WIFI_SSID           "Yohesh’s iPhone"
+#define WIFI_PASSWORD       "12345678"
+#define WIFI_AP_SSID        "vily"
+#define WIFI_AP_PASSWORD    "12345678"
+#define WEBSOCKET_PORT      80
+#define MDNS_HOSTNAME       "vily"
 
 // ─────────────────────────────────────────────
 //  Motor Pins (L298N Motor Driver)
