@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description" content="VILY — AI Study Companion. Your personal robot tutor for learning, studying, and productivity.">
+    <meta name="theme-color" content="#0a0a0f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>VILY — AI Study Companion</title>
+    <link rel="stylesheet" href="style.css?v=2.0.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Three.js & OrbitControls CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <!-- Toast -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Connect Modal (Bottom Sheet) -->
+    <div class="modal-overlay" id="connect-modal">
+        <div class="modal-sheet">
+            <div class="modal-handle"></div>
+            <div class="scan-anim">
+                <div class="ring"></div>
+                <div class="ring"></div>
+                <div class="ring"></div>
+                <div class="center"><i data-lucide="radio" class="icon-pulse"></i></div>
+            </div>
+            <div class="modal-title">Connect to VILY</div>
+            <div class="modal-desc">Make sure your VILY robot is powered on and nearby. Bluetooth will be used to pair.</div>
+            <button class="modal-btn primary" id="modal-connect-btn"><i data-lucide="bolt" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect</button>
+            <button class="modal-btn secondary" id="modal-cancel-btn">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Pong Game Modal -->
+    <div class="modal-overlay" id="pong-modal">
+        <div class="modal-sheet game-sheet">
+            <div class="modal-handle"></div>
+            <div class="game-modal-header">
+                <div class="game-modal-title">VILY Pong</div>
+                <button class="chat-close-btn" id="pong-close-btn"><i data-lucide="x"></i></button>
+            </div>
+            <div class="game-content-wrap">
+                <canvas id="pong-canvas"></canvas>
+                <div class="game-controls-overlay" id="pong-start-screen">
+                    <button class="game-start-btn" id="pong-start-ai-btn">Play vs VILY</button>
+                    <button class="game-start-btn secondary" id="pong-start-pvp-btn">2 Player (PVP)</button>
+                </div>
+            </div>
+            <div class="game-status-bar" id="pong-status-msg">First to 5 points wins!</div>
+        </div>
+    </div>
+
+    <!-- Simon Says Game Modal -->
+    <div class="modal-overlay" id="simon-modal">
+        <div class="modal-sheet game-sheet">
+            <div class="modal-handle"></div>
+            <div class="game-modal-header">
+                <div class="game-modal-title">Simon Says</div>
+                <button class="chat-close-btn" id="simon-close-btn"><i data-lucide="x"></i></button>
+            </div>
+            <div class="game-content-wrap" id="simon-container">
+                <!-- Injected by SimonSaysGame class -->
+            </div>
+            <div class="game-controls-overlay" id="simon-start-screen">
+                <button class="game-start-btn" id="simon-start-btn">Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════ App Shell ═══════ -->
+    <div id="app">
+
+        <!-- ─── Sidebar Dock ─── -->
+        <nav class="sidebar-dock">
+            <div class="sidebar-logo">V</div>
+            <div class="sidebar-nav">
+                <button class="sidebar-item active" data-page="home" id="nav-home" title="Home">
+                    <i data-lucide="home"></i>
+                    <span>Home</span>
+                </button>
+                <button class="sidebar-item" data-page="chat" id="nav-chat" title="AI Chat">
+                    <i data-lucide="message-circle"></i>
+                    <span>Chat</span>
+                </button>
+                <button class="sidebar-item" data-page="study" id="nav-study" title="Study Tools">
+                    <i data-lucide="book-open"></i>
+                    <span>Study</span>
+                </button>
+                <button class="sidebar-item" data-page="rc" id="nav-rc" title="RC Control">
+                    <i data-lucide="gamepad-2"></i>
+                    <span>RC</span>
+                </button>
+                <button class="sidebar-item" data-page="settings" id="nav-settings" title="Settings">
+                    <i data-lucide="settings"></i>
+                    <span>Settings</span>
+                </button>
+            </div>
+            <div class="sidebar-bottom">
+                <div class="sidebar-ble-dot" id="ble-dot" title="BLE Status"></div>
+                <span class="sidebar-battery" id="battery-text">--</span>
+            </div>
+        </nav>
+
+        <!-- ─── Main Content ─── -->
+        <div class="main-content">
+
+            <!-- Top App Bar -->
+            <div class="top-bar">
+                <div class="top-bar-left">
+                    <span class="top-bar-title" id="top-bar-title">Home</span>
+                    <span class="top-bar-subtitle" id="top-bar-subtitle">VILY is ready</span>
+                </div>
+                <div class="top-bar-right">
+                    <button class="ai-provider-badge" id="ai-provider-badge" title="AI Provider">
+                        <span class="dot"></span>
+                        <span id="ai-provider-name">Gemini</span>
+                    </button>
+                    <button class="top-bar-icon-btn" id="ble-status-tap" title="Connection">
+                        <i data-lucide="bluetooth"></i>
+                    </button>
+                    <button class="top-bar-icon-btn" id="theme-toggle-btn" title="Toggle Theme">
+                        <i data-lucide="sun" class="sun-icon"></i>
+                        <i data-lucide="moon" class="moon-icon" style="display:none;"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ═══════ Pages ═══════ -->
+            <div class="pages-container">
+
+                <!-- ────── HOME: Robot Face ────── -->
+                <div class="page page-home active" id="page-home">
+                    <div class="home-controls-row">
+                        <div class="home-view-toggle">
+                            <button class="view-btn active" id="btn-view-2d">2D Face</button>
+                            <button class="view-btn" id="btn-view-3d">3D Robot</button>
+                        </div>
+                        <div class="home-view-toggle">
+                            <button class="view-btn active" data-home-provider="gemini" id="home-provider-gemini">Gemini</button>
+                            <button class="view-btn" data-home-provider="openai" id="home-provider-openai">OpenAI</button>
+                            <button class="view-btn" data-home-provider="groq" id="home-provider-groq">Groq</button>
+                        </div>
+                    </div>
+                    <div class="face-container">
+                        <canvas id="face-canvas"></canvas>
+                        <div id="three-container" style="display:none;"></div>
+                        <div class="face-subtitle" id="face-subtitle"></div>
+                        <button class="face-mic-btn" id="face-mic-btn" title="Speak to VILY">
+                            <i data-lucide="mic"></i>
+                        </button>
+                    </div>
+                    <div class="mood-label">
+                        <i id="mood-icon" data-lucide="smile" class="icon-sm text-green"></i>
+                        <span id="mood-label">Happy</span>
+                    </div>
+                    <div class="home-info-bar collapsed" id="home-info-bar">
+                        <button class="info-bar-toggle" id="info-bar-toggle" title="Show Stats">
+                            <i data-lucide="info" class="info-toggle-icon"></i>
+                            <span id="home-time-min">--:--</span>
+                        </button>
+                        <div class="info-chips-wrap">
+                            <div class="info-chip">
+                                <i data-lucide="clock" class="icon-sm"></i>
+                                <span id="home-time">--:--</span>
+                            </div>
+                            <div class="info-chip">
+                                <i data-lucide="thermometer" class="icon-sm"></i>
+                                <span>28°C</span>
+                            </div>
+                            <div class="info-chip">
+                                <i data-lucide="sun" class="icon-sm"></i>
+                                <span>Sunny</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ────── AI CHAT: Full Page ────── -->
+                <div class="page page-chat" id="page-chat">
+                    <!-- Quick Action Chips -->
+                    <div class="chat-quick-actions">
+                        <button class="quick-chip" data-action="explain"><i data-lucide="lightbulb"></i> Explain This</button>
+                        <button class="quick-chip" data-action="quiz"><i data-lucide="clipboard-list"></i> Quiz Me</button>
+                        <button class="quick-chip" data-action="math"><i data-lucide="calculator"></i> Solve Math</button>
+                        <button class="quick-chip" data-action="summarize"><i data-lucide="file-text"></i> Summarize</button>
+                        <button class="quick-chip" data-action="flashcard"><i data-lucide="layers"></i> Flashcards</button>
+                        <button class="quick-chip" data-action="motivate"><i data-lucide="flame"></i> Motivate Me</button>
+                    </div>
+
+                    <!-- Chat History -->
+                    <div class="chat-history-full" id="chat-history">
+                        <div class="chat-welcome" id="chat-welcome">
+                            <div class="chat-welcome-icon">🤖</div>
+                            <h3>Hey there, I'm VILY!</h3>
+                            <p>Your AI study companion. Ask me anything — from math problems to quiz generation. I'm here to help you learn! ✨</p>
+                        </div>
+                    </div>
+
+                    <!-- Chat Input Bar -->
+                    <div class="chat-input-bar">
+                        <button class="chat-action-btn chat-mic-btn-full" id="chat-mic-btn" title="Speak to VILY">
+                            <i data-lucide="mic"></i>
+                        </button>
+                        <input type="text" class="chat-input-field" id="chat-text-input" placeholder="Ask VILY anything...">
+                        <button class="chat-action-btn chat-send-btn-full" id="chat-send-btn" title="Send">
+                            <i data-lucide="send"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ────── STUDY TOOLS ────── -->
+                <div class="page page-study" id="page-study">
+                    <!-- Study Hub (main grid) -->
+                    <div id="study-hub">
+                        <div class="study-header">
+                            <h2><i data-lucide="graduation-cap"></i> Study Tools</h2>
+                            <p>Your personal AI-powered learning toolkit</p>
+                        </div>
+
+                        <div class="study-grid">
+                            <button class="study-card" data-tool="quiz" id="tool-quiz">
+                                <span class="card-badge ai">AI</span>
+                                <div class="study-card-icon purple"><i data-lucide="clipboard-list"></i></div>
+                                <span class="study-card-title">Quiz Generator</span>
+                                <span class="study-card-desc">AI-powered quizzes on any topic</span>
+                            </button>
+                            <button class="study-card" data-tool="math" id="tool-math">
+                                <span class="card-badge ai">AI</span>
+                                <div class="study-card-icon cyan"><i data-lucide="calculator"></i></div>
+                                <span class="study-card-title">Math Solver</span>
+                                <span class="study-card-desc">Step-by-step solutions</span>
+                            </button>
+                            <button class="study-card" data-tool="notes" id="tool-notes">
+                                <div class="study-card-icon green"><i data-lucide="file-text"></i></div>
+                                <span class="study-card-title">Notes</span>
+                                <span class="study-card-desc">Create & organize notes</span>
+                            </button>
+                            <button class="study-card" data-tool="pomodoro" id="tool-pomodoro">
+                                <span class="card-badge hot">HOT</span>
+                                <div class="study-card-icon orange"><i data-lucide="timer"></i></div>
+                                <span class="study-card-title">Pomodoro</span>
+                                <span class="study-card-desc">Focus timer 25/5 cycles</span>
+                            </button>
+                            <button class="study-card" data-tool="flashcards" id="tool-flashcards">
+                                <div class="study-card-icon pink"><i data-lucide="layers"></i></div>
+                                <span class="study-card-title">Flashcards</span>
+                                <span class="study-card-desc">Create & review cards</span>
+                            </button>
+                            <button class="study-card" data-tool="explain" id="tool-explain">
+                                <span class="card-badge ai">AI</span>
+                                <div class="study-card-icon blue"><i data-lucide="book-open"></i></div>
+                                <span class="study-card-title">Explainer</span>
+                                <span class="study-card-desc">Deep concept breakdowns</span>
+                            </button>
+                            <button class="study-card" data-tool="planner" id="tool-planner">
+                                <div class="study-card-icon green"><i data-lucide="calendar"></i></div>
+                                <span class="study-card-title">Study Planner</span>
+                                <span class="study-card-desc">Schedule & track goals</span>
+                            </button>
+                            <button class="study-card" data-tool="games" id="tool-games">
+                                <span class="card-badge new">FUN</span>
+                                <div class="study-card-icon red"><i data-lucide="gamepad-2"></i></div>
+                                <span class="study-card-title">Study Break</span>
+                                <span class="study-card-desc">Mini-games for breaks</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- ── Study Sub-Views (rendered dynamically) ── -->
+
+                    <!-- Quiz Sub-View -->
+                    <div class="study-subview" id="subview-quiz">
+                        <div class="subview-header">
+                            <button class="subview-back-btn" data-back="study-hub"><i data-lucide="arrow-left"></i></button>
+                            <span class="subview-title">Quiz Generator</span>
+                        </div>
+                        <div class="quiz-container" id="quiz-container">
+                            <div class="quiz-setup" id="quiz-setup">
+                                <input type="text" class="quiz-topic-input" id="quiz-topic" placeholder="Enter a topic (e.g. Photosynthesis, World War 2)...">
+                                <div class="quiz-options-row">
+                                    <button class="quiz-option-btn active" data-count="5">5 Qs</button>
+                                    <button class="quiz-option-btn" data-count="10">10 Qs</button>
+                                    <button class="quiz-option-btn" data-count="15">15 Qs</button>
+                                </div>
+                                <button class="quiz-generate-btn" id="quiz-generate-btn">
+                                    <i data-lucide="sparkles" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px;"></i>
+                                    Generate Quiz with AI
+                                </button>
+                            </div>
+                            <div id="quiz-play-area"></div>
+                        </div>
+                    </div>
+
+                    <!-- Math Solver Sub-View -->
+                    <div class="study-subview" id="subview-math">
+                        <div class="subview-header">
+                            <button class="subview-back-btn" data-back="study-hub"><i data-lucide="arrow-left"></i></button>
+                            <span class="subview-title">Math Solver</span>
+                        </div>
+                        <div class="quiz-container">
+                            <input type="text" class="quiz-topic-input" id="math-input" placeholder="Type your math problem (e.g. solve 2x + 5 = 13)...">
+                            <button class="quiz-generate-btn" id="math-solve-btn">
+                                <i data-lucide="sparkles" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px;"></i>
+                                Solve with AI
+                            </button>
+                            <div id="math-result" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Notes Sub-View -->
+                    <div class="study-subview" id="subview-notes">
+                        <div class="subview-header">
+                            <button class="subview-back-btn" data-back="study-hub"><i data-lucide="arrow-left"></i></button>
+                            <span class="subview-title">Notes</span>
+                        </div>
+                        <div class="notes-container">
+                            <div class="notes-toolbar">
+                                <button class="notes-add-btn" id="notes-add-btn"><i data-lucide="plus"></i> New Note</button>
+                                <input type="text" class="notes-search" id="notes-search" placeholder="Search notes...">
+                            </div>
+                            <div class="notes-list" id="notes-list">
+                                <!-- Dynamically populated -->
+                            </div>
+                            <div class="note-editor" id="note-editor">
+                                <input type="text" class="note-editor-title" id="note-title" placeholder="Note title...">
+                                <textarea class="note-editor-body" id="note-body" placeholder="Start writing..."></textarea>
+                                <div class="note-editor-actions">
+                                    <button class="pomodoro-btn secondary" id="note-cancel-btn">Cancel</button>
+                                    <button class="pomodoro-btn primary" id="note-save-btn">Save Note</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pomodoro Sub-View -->
+                    <div class="study-subview" id="subview-pomodoro">
+                        <div class="subview-header">
+                            <button class="subview-back-btn" data-back="study-hub"><i data-lucide="arrow-left"></i></button>
+                            <span class="subview-title">Pomodoro Timer</span>
+                        </div>
+                        <div class="pomodoro-container">
+                            <div class="pomodoro-ring">
+                                <svg viewBox="0 0 100 100">
+                                    <circle class="ring-bg" cx="50" cy="50" r="44"/>
+                                    <circle class="ring-progress" id="pomodoro-progress" cx="50" cy="50" r="44"
+                                        stroke-dasharray="276.46" stroke-dashoffset="0"/>
+                                </svg>
+                                <div class="pomodoro-time-display">
+                                    <span class="pomodoro-time" id="pomodoro-time">25:00</span>
+                                    <span class="pomodoro-phase" id="pomodoro-phase">Focus</span>
+                                </div>
+                            </div>
+                            <div class="pomodoro-sessions" id="pomodoro-sessions">
+                                <div class="pomodoro-dot"></div>
+                                <div class="pomodoro-dot"></div>
+                                <div class="pomodoro-dot"></div>
+                                <div class="pomodoro-dot"></div>
+                            </div>
+                            <div class="pomodoro-controls">
+                                <button class="pomodoro-btn secondary" id="pomodoro-reset-btn">Reset</button>
+                                <button class="pomodoro-btn primary" id="pomodoro-start-btn">Start</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Flashcards Sub-View -->
+                    <div class="study-subview" id="subview-flashcards">
+                        <div class="subview-header">
+                            <button class="subview-back-btn" data-back="study-hub"><i data-lucide="arrow-left"></i></button>
+                            <span class="subview-title">Flashcards</span>
+                        </div>
+                        <div class="flashcard-container">
+                            <div class="flashcard-wrapper" id="flashcard-wrapper">
+                                <div class="flashcard" id="flashcard">
+                                    <div class="flashcard-face flashcard-front">
+                                        <span class="flashcard-label">Question</span>
+                                        <span class="flashcard-text" id="flashcard-front-text">Create your first flashcard!</span>
+                                    </div>
+                                    <div class="flashcard-face flashcard-back">
+                                        <span class="flashcard-label">Answer</span>
+                                        <span class="flashcard-text" id="flashcard-back-text">Tap "Add Card" below to begin</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flashcard-nav">
+                                <button class="flashcard-nav-btn" id="flashcard-prev"><i data-lucide="chevron-left"></i></button>
+                                <span class="flashcard-counter" id="flashcard-counter">0 / 0</span>
+                                <button class="flashcard-nav-btn" id="flashcard-next"><i data-lucide="chevron-right"></i></button>
+                            </div>
+                            <div style="display:flex;gap:8px;margin-top:8px;">
+                                <button class="pomodoro-btn primary" id="flashcard-add-btn">
+                                    <i data-lucide="plus" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px;"></i> Add Card
+                                </button>
+                                <button class="pomodoro-btn secondary" id="flashcard-generate-btn">
+                                    <i data-lucide="sparkles" style="width:14px;height:14px;display:inline-block;vertical-align:middle;margin-right:4px;"></i> AI Generate
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Explainer Sub-View -->
+                    <div class="study-subview" id="subview-explain">
+                        <div class="subview-header">
+                            <button class="subview-back-btn" data-back="study-hub"><i data-lucide="arrow-left"></i></button>
+                            <span class="subview-title">Concept Explainer</span>
+                        </div>
+                        <div class="quiz-container">
+                            <input type="text" class="quiz-topic-input" id="explain-input" placeholder="What concept do you want explained? (e.g. DNA replication)">
+                            <div class="quiz-options-row">
+                                <button class="quiz-option-btn active" data-level="simple">Simple</button>
+                                <button class="quiz-option-btn" data-level="detailed">Detailed</button>
+                                <button class="quiz-option-btn" data-level="eli5">ELI5</button>
+                            </div>
+                            <button class="quiz-generate-btn" id="explain-btn">
+                                <i data-lucide="sparkles" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:4px;"></i>
+                                Explain with AI
+                            </button>
+                            <div id="explain-result" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Study Planner Sub-View -->
+                    <div class="study-subview" id="subview-planner">
+                        <div class="subview-header">
+                            <button class="subview-back-btn" data-back="study-hub"><i data-lucide="arrow-left"></i></button>
+                            <span class="subview-title">Study Planner</span>
+                        </div>
+                        <div class="notes-container">
+                            <div class="notes-toolbar">
+                                <button class="notes-add-btn" id="planner-add-btn"><i data-lucide="plus"></i> Add Task</button>
+                            </div>
+                            <div class="notes-list" id="planner-list">
+                                <!-- Dynamically populated -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Games Sub-View -->
+                    <div class="study-subview" id="subview-games">
+                        <div class="subview-header">
+                            <button class="subview-back-btn" data-back="study-hub"><i data-lucide="arrow-left"></i></button>
+                            <span class="subview-title">Study Break — Games</span>
+                        </div>
+                        <div class="study-grid">
+                            <button class="study-card" data-game="VILY Pong" id="game-pong">
+                                <div class="study-card-icon purple"><i data-lucide="award"></i></div>
+                                <span class="study-card-title">VILY Pong</span>
+                                <span class="study-card-desc">Classic • 2 Player</span>
+                            </button>
+                            <button class="study-card" data-game="Simon Says" id="game-simon">
+                                <span class="card-badge hot">HOT</span>
+                                <div class="study-card-icon cyan"><i data-lucide="dribbble"></i></div>
+                                <span class="study-card-title">Simon Says</span>
+                                <span class="study-card-desc">Memory • LED</span>
+                            </button>
+                            <button class="study-card" data-game="Dance Battle" id="game-dance">
+                                <div class="study-card-icon pink"><i data-lucide="music-4"></i></div>
+                                <span class="study-card-title">Dance Battle</span>
+                                <span class="study-card-desc">Motion • Music</span>
+                            </button>
+                            <button class="study-card" data-game="Face Chase" id="game-face-chase">
+                                <div class="study-card-icon orange"><i data-lucide="eye"></i></div>
+                                <span class="study-card-title">Face Chase</span>
+                                <span class="study-card-desc">Camera • Motion</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ────── RC (Remote Control) ────── -->
+                <div class="page page-rc" id="page-rc">
+                    <div class="rc-header">
+                        <h2><i data-lucide="navigation" class="title-icon"></i> Remote Control</h2>
+                        <p>Drive VILY manually</p>
+                    </div>
+
+                    <!-- Centered D-Pad Controller (Replaces Camera and Sliders) -->
+                    <div class="dpad-container">
+                        <div class="dpad">
+                            <button class="dpad-btn up" id="rc-btn-up" title="Move Forward">
+                                <i data-lucide="chevron-up"></i>
+                            </button>
+                            <button class="dpad-btn left" id="rc-btn-left" title="Turn Left">
+                                <i data-lucide="chevron-left"></i>
+                            </button>
+                            <button class="dpad-btn center" id="rc-btn-stop" title="Stop">
+                                <i data-lucide="square"></i>
+                            </button>
+                            <button class="dpad-btn right" id="rc-btn-right" title="Turn Right">
+                                <i data-lucide="chevron-right"></i>
+                            </button>
+                            <button class="dpad-btn down" id="rc-btn-down" title="Move Backward">
+                                <i data-lucide="chevron-down"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Center Utility Control Buttons (Horn, Light) -->
+                    <div style="display: flex; justify-content: center; gap: 16px; margin-top: 10px;">
+                        <button class="rc-btn" id="rc-btn-horn" title="Horn" style="width: 50px; height: 50px; border-radius: 50%;"><i data-lucide="volume-2"></i></button>
+                        <button class="rc-btn" id="rc-btn-light" title="Headlight" style="width: 50px; height: 50px; border-radius: 50%;"><i data-lucide="lightbulb"></i></button>
+                    </div>
+
+                    <!-- Speed Range Control Slider -->
+                    <div class="rc-speed-control">
+                        <div class="rc-speed-label">
+                            <span>DRIVE SPEED</span>
+                            <span id="rc-speed-val">30%</span>
+                        </div>
+                        <input type="range" id="rc-speed-slider" min="10" max="100" value="30" class="rc-speed-slider">
+                    </div>
+                </div>
+
+                <!-- ────── SETTINGS ────── -->
+                <div class="page page-settings" id="page-settings">
+                    <div class="settings-header">
+                        <h2><i data-lucide="settings" class="title-icon"></i> Settings</h2>
+                    </div>
+
+                    <!-- AI Configuration -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">AI Configuration</div>
+                        <div class="settings-list">
+                            <div class="setting-item">
+                                <div class="setting-icon purple"><i data-lucide="brain"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">AI Provider</div>
+                                    <div class="desc">Choose your AI engine</div>
+                                    <div style="display:flex;gap:6px;margin-top:8px;">
+                                        <button class="quiz-option-btn active" data-provider="gemini" id="provider-gemini">Gemini</button>
+                                        <button class="quiz-option-btn" data-provider="openai" id="provider-openai">OpenAI</button>
+                                        <button class="quiz-option-btn" data-provider="groq" id="provider-groq">Groq</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="setting-item" style="flex-wrap:wrap;">
+                                <div class="setting-icon blue"><i data-lucide="key"></i></div>
+                                <div class="setting-text" style="flex:1;">
+                                    <div class="title">Gemini API Key</div>
+                                    <div class="desc">Required for AI features</div>
+                                    <input type="password" class="setting-input" id="gemini-api-key-input" placeholder="Paste your API key here...">
+                                </div>
+                            </div>
+                            <div class="setting-item" style="flex-wrap:wrap;">
+                                <div class="setting-icon green"><i data-lucide="key"></i></div>
+                                <div class="setting-text" style="flex:1;">
+                                    <div class="title">OpenAI API Key</div>
+                                    <div class="desc">Optional — for ChatGPT</div>
+                                    <input type="password" class="setting-input" id="openai-api-key-input" placeholder="Paste your API key here...">
+                                </div>
+                            </div>
+                            <div class="setting-item" style="flex-wrap:wrap;">
+                                <div class="setting-icon red"><i data-lucide="key"></i></div>
+                                <div class="setting-text" style="flex:1;">
+                                    <div class="title">Groq API Key</div>
+                                    <div class="desc">Optional — for Llama/Gemma (Super Fast)</div>
+                                    <input type="password" class="setting-input" id="groq-api-key-input" placeholder="Paste your API key here...">
+                                </div>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-icon orange"><i data-lucide="save"></i></div>
+                                <div class="setting-text"><div class="title">Save API Keys</div></div>
+                                <button class="pomodoro-btn primary" id="save-api-keys-btn" style="padding:8px 16px;font-size:12px;">Save</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Connection -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">Connection</div>
+                        <div class="settings-list">
+                            <button class="setting-item" id="setting-connect">
+                                <div class="setting-icon blue"><i data-lucide="bluetooth"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">Bluetooth</div>
+                                    <div class="desc">Connect or disconnect VILY</div>
+                                </div>
+                                <span class="setting-arrow"><i data-lucide="chevron-right"></i></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Appearance -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">Appearance</div>
+                        <div class="settings-list">
+                            <div class="setting-item" id="setting-theme-item">
+                                <div class="setting-icon yellow"><i data-lucide="palette"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">Light Theme</div>
+                                    <div class="desc">Toggle light or dark theme</div>
+                                </div>
+                                <div class="toggle" data-setting="Light Theme" id="toggle-light-theme"></div>
+                            </div>
+                            <div class="setting-item" id="setting-3d-item">
+                                <div class="setting-icon blue"><i data-lucide="box"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">3D Robot View</div>
+                                    <div class="desc">Display interactive 3D robot body</div>
+                                </div>
+                                <div class="toggle" data-setting="3D Robot View" id="toggle-3d-view"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audio & Voice -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">Audio & Voice</div>
+                        <div class="settings-list">
+                            <div class="setting-item">
+                                <div class="setting-icon blue"><i data-lucide="volume-2"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">Sound Effects</div>
+                                    <div class="desc">Cute robot beeps and chirps</div>
+                                </div>
+                                <div class="toggle on" data-setting="Sound Effects" id="toggle-sounds"></div>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-icon purple"><i data-lucide="mic"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">Robot Voice (TTS)</div>
+                                    <div class="desc">Speak replies out loud</div>
+                                </div>
+                                <div class="toggle on" data-setting="Voice TTS" id="toggle-voice-tts"></div>
+                            </div>
+                            <div class="setting-item" style="flex-wrap: wrap;">
+                                <div class="setting-icon purple"><i data-lucide="languages"></i></div>
+                                <div class="setting-text" style="flex: 1;">
+                                    <div class="title">Voice Input Language</div>
+                                    <div class="desc">Bilingual support for voice input</div>
+                                    <div style="display:flex;gap:6px;margin-top:8px;">
+                                        <button class="quiz-option-btn active" data-lang="en-US" id="lang-en">English</button>
+                                        <button class="quiz-option-btn" data-lang="ta-IN" id="lang-ta">Tamil (தமிழ்)</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Study Preferences -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">Study Preferences</div>
+                        <div class="settings-list">
+                            <div class="setting-item">
+                                <div class="setting-icon orange"><i data-lucide="timer"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">Focus Duration</div>
+                                    <div class="desc">Pomodoro session length</div>
+                                </div>
+                                <span style="font-size:13px;font-weight:600;color:var(--text-secondary);" id="focus-duration-text">25 min</span>
+                            </div>
+                            <div class="setting-item">
+                                <div class="setting-icon green"><i data-lucide="coffee"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">Break Duration</div>
+                                    <div class="desc">Short break length</div>
+                                </div>
+                                <span style="font-size:13px;font-weight:600;color:var(--text-secondary);" id="break-duration-text">5 min</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Diagnostics -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">Diagnostics</div>
+                        <div class="settings-list">
+                            <button class="setting-item" id="setting-led">
+                                <div class="setting-icon orange"><i data-lucide="lightbulb"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">LED Test</div>
+                                    <div class="desc">Cycle through all LED colors</div>
+                                </div>
+                                <span class="setting-arrow"><i data-lucide="chevron-right"></i></span>
+                            </button>
+                            <button class="setting-item" id="setting-motor">
+                                <div class="setting-icon teal"><i data-lucide="settings"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">Motor Test</div>
+                                    <div class="desc">Quick movement check</div>
+                                </div>
+                                <span class="setting-arrow"><i data-lucide="chevron-right"></i></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Data -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">Data</div>
+                        <div class="settings-list">
+                            <button class="setting-item" id="setting-clear-chat">
+                                <div class="setting-icon red"><i data-lucide="trash-2"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">Clear Chat History</div>
+                                    <div class="desc">Remove all conversation data</div>
+                                </div>
+                                <span class="setting-arrow"><i data-lucide="chevron-right"></i></span>
+                            </button>
+                            <button class="setting-item" id="setting-clear-memory">
+                                <div class="setting-icon pink"><i data-lucide="database"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">Clear AI Memory</div>
+                                    <div class="desc">Reset VILY's memory of you</div>
+                                </div>
+                                <span class="setting-arrow"><i data-lucide="chevron-right"></i></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- About -->
+                    <div class="settings-group">
+                        <div class="settings-group-title">About</div>
+                        <div class="settings-list">
+                            <button class="setting-item" id="setting-about">
+                                <div class="setting-icon red"><i data-lucide="info"></i></div>
+                                <div class="setting-text">
+                                    <div class="title">About VILY</div>
+                                    <div class="desc">Version 2.0 — AI Study Companion</div>
+                                </div>
+                                <span class="setting-arrow"><i data-lucide="chevron-right"></i></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="version-info">VILY v2.0.0 • AI Study Companion • Made with <i data-lucide="heart" class="heart-icon"></i></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="ble.js?v=2.0.0"></script>
+    <script src="joystick.js?v=2.0.0"></script>
+    <script src="sound.js?v=2.0.0"></script>
+    <script src="three_view.js?v=2.0.0"></script>
+    <script src="face.js?v=2.0.0"></script>
+    <script src="games.js?v=2.0.0"></script>
+    <script src="study.js?v=2.0.0"></script>
+    <script src="app.js?v=2.0.0"></script>
+    <script>
+        // Live clock on home page
+        function updateClock() {
+            const el = document.getElementById('home-time');
+            const elMin = document.getElementById('home-time-min');
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+            if (el) el.textContent = timeStr;
+            if (elMin) elMin.textContent = timeStr;
+        }
+        updateClock();
+        setInterval(updateClock, 10000);
+    </script>
+</body>
+</html>
