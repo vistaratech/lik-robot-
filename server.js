@@ -587,6 +587,11 @@ Response MUST be a valid JSON object. Output raw JSON only.`;
 //  - Tamil/Mixed texts: Try Gemini TTS first (native Tamil support), then fall back to Browser TTS
 //  - English texts: Try Groq Orpheus TTS (high quota, natural English voice), then Gemini, then Browser fallback
 // ─────────────────────────────────────────────
+const TTS_CIRCUIT_BREAKER_MS = 5 * 60 * 1000; // 5 minutes
+let lastGroqFailureTime = 0;
+let lastGeminiFailureTime = 0;
+let lastGoogleFailureTime = 0;
+
 app.post('/api/tts', async (req, res) => {
     const { text, language = 'en-US' } = req.body;
     if (!text) return res.status(400).json({ error: 'text is required' });
@@ -607,11 +612,13 @@ app.post('/api/tts', async (req, res) => {
 
     // Detect if text contains Tamil characters
     const isTamil = /[\u0B80-\u0BFF]/.test(ttsText);
+    const nowTime = Date.now();
 
     if (isTamil) {
         // ── Tamil Mode: Try Gemini TTS (native Tamil support) ──────────────────────
         const geminiKey = process.env.GEMINI_API_KEY || '';
-        if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
+        const isGeminiHealthy = (nowTime - lastGeminiFailureTime) > TTS_CIRCUIT_BREAKER_MS;
+        if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY' && isGeminiHealthy) {
             try {
                 const ttsModel = 'gemini-2.5-flash-preview-tts';
                 const ttsVoice = 'Kore'; // Excellent for Tamil
@@ -641,15 +648,18 @@ app.post('/api/tts', async (req, res) => {
                     }
                 } else {
                     console.warn(`[TTS] Gemini Tamil TTS failed (${gemRes.status})`);
+                    lastGeminiFailureTime = Date.now(); // Trip circuit
                 }
             } catch (gemErr) {
                 console.warn('[TTS] Gemini Tamil TTS error:', gemErr.message);
+                lastGeminiFailureTime = Date.now(); // Trip circuit
             }
         }
     } else {
         // ── English Mode: Try Groq Orpheus TTS ──────────────────────
         const groqKey = process.env.GROQ_API_KEY || '';
-        if (groqKey && groqKey !== 'YOUR_GROQ_API_KEY') {
+        const isGroqHealthy = (nowTime - lastGroqFailureTime) > TTS_CIRCUIT_BREAKER_MS;
+        if (groqKey && groqKey !== 'YOUR_GROQ_API_KEY' && isGroqHealthy) {
             try {
                 const groqRes = await fetch('https://api.groq.com/openai/v1/audio/speech', {
                     method: 'POST',
@@ -673,15 +683,18 @@ app.post('/api/tts', async (req, res) => {
                 } else {
                     const errText = await groqRes.text();
                     console.warn(`[TTS] Groq Orpheus TTS failed (${groqRes.status}): ${errText.slice(0, 150)}`);
+                    lastGroqFailureTime = Date.now(); // Trip circuit
                 }
             } catch (groqErr) {
                 console.warn('[TTS] Groq Orpheus TTS error:', groqErr.message);
+                lastGroqFailureTime = Date.now(); // Trip circuit
             }
         }
 
         // Secondary fallback for English: Try Gemini TTS
         const geminiKey = process.env.GEMINI_API_KEY || '';
-        if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
+        const isGeminiHealthy = (Date.now() - lastGeminiFailureTime) > TTS_CIRCUIT_BREAKER_MS;
+        if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY' && isGeminiHealthy) {
             try {
                 const ttsModel = 'gemini-2.5-flash-preview-tts';
                 const ttsVoice = 'Kore';
@@ -711,23 +724,31 @@ app.post('/api/tts', async (req, res) => {
                     }
                 } else {
                     console.warn(`[TTS] Gemini English TTS failed (${gemRes.status})`);
+                    lastGeminiFailureTime = Date.now(); // Trip circuit
                 }
             } catch (gemErr) {
                 console.warn('[TTS] Gemini English TTS error:', gemErr.message);
+                lastGeminiFailureTime = Date.now(); // Trip circuit
             }
         }
     }
 
     // ── Third Fallback: Google Translate TTS ──────────────────────
-    try {
-        const targetLang = isTamil ? 'ta' : (language.split('-')[0] || 'en');
-        console.log(`[TTS] Trying Google Translate TTS fallback for lang=${targetLang}`);
-        const googleTTS = await getGoogleTranslateTTS(ttsText, targetLang);
-        if (googleTTS) {
-            return res.json(googleTTS);
+    const isGoogleHealthy = (Date.now() - lastGoogleFailureTime) > TTS_CIRCUIT_BREAKER_MS;
+    if (isGoogleHealthy) {
+        try {
+            const targetLang = isTamil ? 'ta' : (language.split('-')[0] || 'en');
+            console.log(`[TTS] Trying Google Translate TTS fallback for lang=${targetLang}`);
+            const googleTTS = await getGoogleTranslateTTS(ttsText, targetLang);
+            if (googleTTS) {
+                return res.json(googleTTS);
+            } else {
+                lastGoogleFailureTime = Date.now(); // Trip circuit
+            }
+        } catch (err) {
+            console.warn('[TTS] Google Translate TTS error:', err.message);
+            lastGoogleFailureTime = Date.now(); // Trip circuit
         }
-    } catch (err) {
-        console.warn('[TTS] Google Translate TTS error:', err.message);
     }
 
     // ── Final Fallback: Browser TTS ──────────────────────

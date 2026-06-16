@@ -17,6 +17,7 @@ class RobotSoundEngine {
         this._isSpeakingNeural = false;
         this._ttsInFlight = false;
         this._lastTTSCallTime = 0; // Timestamp of last TTS API call (rate limit guard)
+        this.useBrowserTTSOnly = false;
 
         if ('speechSynthesis' in window) {
             window.speechSynthesis.onvoiceschanged = () => this.loadVoice();
@@ -177,6 +178,9 @@ class RobotSoundEngine {
      * Returns a Promise that resolves to { audio, mimeType } or null on failure.
      */
     async prefetchTTS(text, lang = 'en-US') {
+        if (this.useBrowserTTSOnly) {
+            return null;
+        }
         // Enforce minimum 1.5s gap between TTS API calls (avoid Gemini 429 rate limit)
         const now = Date.now();
         const sinceLastCall = now - this._lastTTSCallTime;
@@ -209,6 +213,11 @@ class RobotSoundEngine {
      * This removes the extra round-trip delay between text appearing and voice starting.
      */
     async speakWithPrefetch(text, ttsPromise, onEndCallback) {
+        if (this.useBrowserTTSOnly) {
+            const lang = localStorage.getItem('lik-voice-lang') || 'en-US';
+            this._speakBrowser(text, lang, onEndCallback);
+            return;
+        }
         // Guard: prevent double-speak if already playing
         if (this._ttsInFlight) {
             console.log('[Sound] Double-speak blocked (already in flight)');
@@ -278,6 +287,11 @@ class RobotSoundEngine {
 
         const voiceLang = localStorage.getItem('lik-voice-lang') || 'en-US';
         this._lastTTSText = text; // Save for fallback use
+
+        if (this.useBrowserTTSOnly) {
+            this._speakBrowser(text, voiceLang, onEndCallback);
+            return;
+        }
 
         try {
             // ── Step 1: Try Neural TTS via server ──

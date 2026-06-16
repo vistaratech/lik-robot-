@@ -897,6 +897,32 @@ class LikApp {
             });
         });
 
+        // Initialize toggles from localStorage
+        const soundsEnabled = localStorage.getItem('lik-sounds-enabled') !== 'false'; // default true
+        const ttsEnabled = localStorage.getItem('lik-tts-enabled') !== 'false'; // default true
+        const fastVoiceEnabled = localStorage.getItem('lik-fast-voice-enabled') === 'true'; // default false
+
+        const toggleSounds = document.getElementById('toggle-sounds');
+        if (toggleSounds) {
+            if (soundsEnabled) toggleSounds.classList.add('on');
+            else toggleSounds.classList.remove('on');
+            if (typeof soundEngine !== 'undefined') soundEngine.soundEnabled = soundsEnabled;
+        }
+
+        const toggleTTS = document.getElementById('toggle-voice-tts');
+        if (toggleTTS) {
+            if (ttsEnabled) toggleTTS.classList.add('on');
+            else toggleTTS.classList.remove('on');
+            if (typeof soundEngine !== 'undefined') soundEngine.ttsEnabled = ttsEnabled;
+        }
+
+        const toggleFastVoice = document.getElementById('toggle-fast-voice');
+        if (toggleFastVoice) {
+            if (fastVoiceEnabled) toggleFastVoice.classList.add('on');
+            else toggleFastVoice.classList.remove('on');
+            if (typeof soundEngine !== 'undefined') soundEngine.useBrowserTTSOnly = fastVoiceEnabled;
+        }
+
         // Toggle switches
         document.querySelectorAll('.toggle').forEach(toggle => {
             toggle.addEventListener('click', () => {
@@ -910,10 +936,17 @@ class LikApp {
                     if (typeof soundEngine !== 'undefined') {
                         soundEngine.soundEnabled = isOn;
                     }
+                    localStorage.setItem('lik-sounds-enabled', isOn ? 'true' : 'false');
                 } else if (setting === 'Voice TTS') {
                     if (typeof soundEngine !== 'undefined') {
                         soundEngine.ttsEnabled = isOn;
                     }
+                    localStorage.setItem('lik-tts-enabled', isOn ? 'true' : 'false');
+                } else if (setting === 'Fast Voice') {
+                    if (typeof soundEngine !== 'undefined') {
+                        soundEngine.useBrowserTTSOnly = isOn;
+                    }
+                    localStorage.setItem('lik-fast-voice-enabled', isOn ? 'true' : 'false');
                 } else if (setting === 'Vision Mode') {
                     this.toggleVisionMode(isOn);
                 }
