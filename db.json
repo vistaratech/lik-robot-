@@ -1,16 +1,6 @@
 {
   "memories": [
     {
-      "timestamp": "2026-06-16T02:45:50.245Z",
-      "user": "I'm going to say something.",
-      "bot": "நண்பா, ஏன் சொல்லு!"
-    },
-    {
-      "timestamp": "2026-06-16T02:45:59.664Z",
-      "user": "Can I tell a story?",
-      "bot": "ஒரு கதை சொல்லு, நண்பா!"
-    },
-    {
       "timestamp": "2026-06-16T02:46:09.491Z",
       "user": "Tell me, tell me.",
       "bot": "சொல்கிறேன், நண்பா! என்ன கதை சொல்ல வேண்டும்?"
@@ -99,6 +89,16 @@
       "timestamp": "2026-06-16T06:12:38.573Z",
       "user": "I'm going to get to the end of the day.",
       "bot": "You're moving on to the end of the day! What's the plan for the rest of the day?"
+    },
+    {
+      "timestamp": "2026-06-16T07:17:08.396Z",
+      "user": "Hi, Lake.",
+      "bot": "வணக்கம், நண்பா!"
+    },
+    {
+      "timestamp": "2026-06-16T07:17:24.343Z",
+      "user": "Can you speak different between laptop and mobile phone?",
+      "bot": "லேப்டாப் மற்றும் மொபைல் போன் ஆகியவற்றுக்கு இடையே உள்ள முக்கிய வித்தியாசம், லேப்டாப் ஒரு நாள்பட்ட கணினி, அதேசமயம் மொபைல் போன் ஒரு நகர்போடும் சாதனம். லேப்டாப்கள் பெரும்பாலும் வீட்டில் அல்லது அலுவலகத்தில் பயன்படுத்தப்படும், அதேசமயம் மொபைல் போன்கள் உங்களைப் பின்தொடர்கின்றன, எங்கு செல்கிறீர்களும் பயன்படுத்த முடியும்."
     }
   ],
   "settings": {}

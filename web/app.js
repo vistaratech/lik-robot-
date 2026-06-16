@@ -266,7 +266,7 @@ class LikApp {
 
                 const playGreeting = () => {
                     if (typeof soundEngine !== 'undefined') {
-                        soundEngine.speak(text);
+                        soundEngine.speak(text, null, true);
                     }
                 };
 

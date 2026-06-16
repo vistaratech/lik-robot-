@@ -263,7 +263,7 @@ class RobotSoundEngine {
      * 2. If key missing or fails, fall back to enhanced browser speechSynthesis
      * 3. Always fires onEndCallback when done
      */
-    async speak(text, onEndCallback) {
+    async speak(text, onEndCallback, forceBrowserTTS = false) {
         if (onEndCallback !== undefined && typeof onEndCallback !== 'function') {
             console.warn('[Sound] speak() called with invalid callback — ignoring');
             onEndCallback = undefined;
@@ -288,7 +288,7 @@ class RobotSoundEngine {
         const voiceLang = localStorage.getItem('lik-voice-lang') || 'en-US';
         this._lastTTSText = text; // Save for fallback use
 
-        if (this.useBrowserTTSOnly) {
+        if (this.useBrowserTTSOnly || forceBrowserTTS) {
             this._speakBrowser(text, voiceLang, onEndCallback);
             return;
         }
