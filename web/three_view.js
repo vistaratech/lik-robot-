@@ -1,7 +1,7 @@
 /**
  * ═══════════════════════════════════════════════
- *  VILY 3D Desk Robot Viewer
- *  Renders an interactive 3D procedural model of VILY
+ *  LIK 3D Desk Robot Viewer
+ *  Renders an interactive 3D procedural model of LIK
  *  using Three.js, with live face-canvas texture mapping.
  * ═══════════════════════════════════════════════
  */

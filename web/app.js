@@ -1,9 +1,9 @@
 /**
- * VILY App — AI Study Companion Platform
+ * LIK App — AI Study Companion Platform
  * Home (Face), AI Chat, Study Tools, RC Control, Settings
  */
 
-class VilyApp {
+class LikApp {
     constructor() {
         this.currentPage = 'home';
         this.connected = false;
@@ -22,12 +22,25 @@ class VilyApp {
         this.rcStream = null;
         this.headlightOn = false;
         this.studyTools = null;
-        this.aiProvider = localStorage.getItem('vily-ai-provider') || 'gemini';
+        let savedProvider = localStorage.getItem('lik-ai-provider');
+        // Default to 'gemini' (best TTS + fastest chat) if not set
+        if (!savedProvider) {
+            savedProvider = 'gemini';
+            localStorage.setItem('lik-ai-provider', 'gemini');
+        }
+        this.aiProvider = savedProvider;
         this.conversationHistory = [];
         this.activeMic = 'chat';
         this.subtitleTimeout = null;
         this.continuousTalk = false;
-        this.voiceLanguage = localStorage.getItem('vily-voice-lang') || 'en-US';
+        this.voiceLanguage = localStorage.getItem('lik-voice-lang') || 'en-US';
+        
+        // Vision State Variables
+        this.visionMode = false;
+        this.visionTimer = null;
+        this.cameraFacingMode = localStorage.getItem('lik-camera-facing') || 'user';
+        this.visionStream = null;
+        this.isScanning = false;
         
         this.init();
     }
@@ -41,11 +54,7 @@ class VilyApp {
         this.setupRC();
         this.setupSettings();
         this.setupChat();
-        this.setupGames();
         this.updateMoodLabel();
-        
-        // Initialize Study Tools
-        this.studyTools = new StudyTools(this);
         
         // Initialize Lucide Icons
         if (typeof lucide !== 'undefined') {
@@ -81,22 +90,65 @@ class VilyApp {
     // ─────────────────────────────────────
     
     setupNavigation() {
-        document.querySelectorAll('.sidebar-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const page = item.dataset.page;
-                if (page) {
-                    this.navigateTo(page);
+        const menuBtn = document.getElementById('menu-btn');
+        const closeBtn = document.getElementById('drawer-close-btn');
+        const drawer = document.getElementById('control-drawer');
+
+        if (menuBtn && drawer) {
+            menuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                drawer.classList.add('open');
+                // Set default drawer tab to drive (RC)
+                this.navigateTo('drive');
+            });
+        }
+
+        if (closeBtn && drawer) {
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                drawer.classList.remove('open');
+                this.currentPage = 'home';
+            });
+        }
+
+        // Close drawer when clicking outside
+        document.addEventListener('click', (e) => {
+            if (drawer && drawer.classList.contains('open')) {
+                if (!drawer.contains(e.target) && !menuBtn.contains(e.target)) {
+                    drawer.classList.remove('open');
+                    this.currentPage = 'home';
+                }
+            }
+        });
+
+        // Tab buttons inside drawer click events
+        document.querySelectorAll('.drawer-tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const tab = btn.dataset.tab;
+                if (tab) {
+                    this.navigateTo(tab);
                 }
             });
         });
     }
     
     navigateTo(pageId) {
-        // Hide home page subtitle and deactivate talk mode when navigating away
-        if (pageId !== 'home') {
+        // Map old page names to new drawer tabs
+        const tabMap = {
+            home: 'home',
+            chat: 'chat',
+            rc: 'drive',
+            drive: 'drive',
+            settings: 'settings'
+        };
+        const activeTab = tabMap[pageId] || pageId;
+
+        // Hide home page subtitle and deactivate talk mode when navigating away from home
+        if (activeTab !== 'home') {
             this.continuousTalk = false;
             if (this.isRecording && this.activeMic === 'home') {
-                try { this.speechRecog.stop(); } catch(e) {}
+                this.stopVoiceRecording();
             }
             const subtitleEl = document.getElementById('face-subtitle');
             if (subtitleEl) subtitleEl.classList.remove('show');
@@ -105,43 +157,47 @@ class VilyApp {
             }
         }
 
-        // Clean up camera stream if leaving RC
-        if (pageId !== 'rc' && this.rcStream) {
+        // Clean up camera stream if leaving drive (RC)
+        if (activeTab !== 'drive' && this.rcStream) {
             this.rcStream.getTracks().forEach(track => track.stop());
             this.rcStream = null;
         }
 
-        // Update pages
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        const target = document.getElementById(`page-${pageId}`);
-        if (target) target.classList.add('active');
-        
-        // Update sidebar
-        document.querySelectorAll('.sidebar-item').forEach(n => n.classList.remove('active'));
-        const navItem = document.querySelector(`.sidebar-item[data-page="${pageId}"]`);
-        if (navItem) navItem.classList.add('active');
-        
-        this.currentPage = pageId;
-        
-        // Update top bar titles
-        const titles = {
-            home: ['Home', 'VILY is ready'],
-            chat: ['AI Chat', 'Ask me anything'],
-            study: ['Study Tools', 'Your learning toolkit'],
-            rc: ['Remote Control', 'Drive VILY'],
-            settings: ['Settings', 'Configure VILY']
-        };
-        const [title, subtitle] = titles[pageId] || ['VILY', ''];
-        this.updateTopBar(title, subtitle);
+        if (activeTab === 'home') {
+            document.getElementById('control-drawer')?.classList.remove('open');
+            this.currentPage = 'home';
+        } else {
+            // Open the drawer
+            const drawer = document.getElementById('control-drawer');
+            if (drawer) drawer.classList.add('open');
 
-        // Close any open study subview when navigating away
-        if (pageId !== 'study' && this.studyTools) {
-            this.studyTools.closeSubview();
-        }
-        
-        // Resize RC sliders when switching to RC
-        if (pageId === 'rc') {
-            // Slider dimensions are managed by CSS grid/flex now
+            // Toggle tab button active state
+            document.querySelectorAll('.drawer-tab-btn').forEach(b => {
+                if (b.dataset.tab === activeTab) {
+                    b.classList.add('active');
+                } else {
+                    b.classList.remove('active');
+                }
+            });
+            
+            // Toggle tab panel visibility
+            document.querySelectorAll('.drawer-tab-panel').forEach(p => {
+                if (p.id === `panel-${activeTab}`) {
+                    p.classList.add('active');
+                } else {
+                    p.classList.remove('active');
+                }
+            });
+
+            this.currentPage = activeTab;
+
+            // Focus chat input if chat tab is active
+            if (activeTab === 'chat') {
+                setTimeout(() => {
+                    const input = document.getElementById('chat-text-input');
+                    if (input) input.focus();
+                }, 100);
+            }
         }
 
         // Setup view state when navigating home
@@ -194,19 +250,19 @@ class VilyApp {
         // Update mood label periodically
         setInterval(() => this.updateMoodLabel(), 1000);
         
-        // Double-tap face to toggle fullscreen face mode
+        // Double-tap face to toggle pure fullscreen face mode
         let lastTap = 0;
         document.getElementById('face-canvas').addEventListener('click', () => {
             const now = Date.now();
             if (now - lastTap < 300) {
-                document.body.classList.toggle('fullscreen-face');
+                document.body.classList.toggle('fullscreen-pure');
                 setTimeout(() => {
                     if (this.face) {
                         this.face.setupCanvas();
                     }
                 }, 100);
-                const isFullscreen = document.body.classList.contains('fullscreen-face');
-                this.showToast(isFullscreen ? "Fullscreen Face Active! Double-tap to exit" : "Exit Fullscreen Face");
+                const isFullscreen = document.body.classList.contains('fullscreen-pure');
+                this.showToast(isFullscreen ? "Pure Face Active! Double-tap to show controls" : "Show controls button");
             }
             lastTap = now;
         });
@@ -297,7 +353,7 @@ class VilyApp {
     // ─────────────────────────────────────
     
     setupTheme() {
-        this.theme = localStorage.getItem('vily-theme') || 'dark';
+        this.theme = localStorage.getItem('lik-theme') || 'dark';
         
         const headerBtn = document.getElementById('theme-toggle-btn');
         if (headerBtn) {
@@ -329,7 +385,7 @@ class VilyApp {
         }
         
         this.theme = theme;
-        localStorage.setItem('vily-theme', theme);
+        localStorage.setItem('lik-theme', theme);
         
         // Update 3D Background if active
         if (this.threeView && this.threeView.scene) {
@@ -453,7 +509,7 @@ class VilyApp {
             this.updateConnectionUI(false);
             this.batteryPercent = -1;
             this.updateBatteryUI(-1);
-            this.showToast('Disconnected from VILY');
+            this.showToast('Disconnected from LIK');
             this.face.setMood('sad');
         };
         
@@ -470,26 +526,29 @@ class VilyApp {
         document.getElementById('modal-cancel-btn').addEventListener('click', () => this.hideConnectModal());
         
         // Connection tap on top bar
-        document.getElementById('ble-status-tap').addEventListener('click', () => {
-            if (this.connected) {
-                this.disconnectBLE();
-            } else {
-                this.showConnectModal();
-            }
-        });
+        const bleStatusTap = document.getElementById('ble-status-tap');
+        if (bleStatusTap) {
+            bleStatusTap.addEventListener('click', () => {
+                if (this.connected) {
+                    this.disconnectBLE();
+                } else {
+                    this.showConnectModal();
+                }
+            });
+        }
     }
     
     async connectBLE() {
         const btn = document.getElementById('modal-connect-btn');
         const ipInput = document.getElementById('wifi-ip-input');
-        const ipAddress = ipInput ? ipInput.value.trim() : 'vily.local';
+        const ipAddress = ipInput ? ipInput.value.trim() : 'lik.local';
         
         if (!ipAddress) {
             this.showToast('Please enter an IP address or hostname');
             return;
         }
         
-        localStorage.setItem('vily-ip-address', ipAddress);
+        localStorage.setItem('lik-ip-address', ipAddress);
         
         btn.classList.add('connecting');
         btn.innerHTML = '<i class="icon-pulse">📡</i> Connecting...';
@@ -517,7 +576,7 @@ class VilyApp {
         // Pre-fill IP address from localStorage
         const ipInput = document.getElementById('wifi-ip-input');
         if (ipInput) {
-            ipInput.value = localStorage.getItem('vily-ip-address') || 'vily.local';
+            ipInput.value = localStorage.getItem('lik-ip-address') || 'lik.local';
         }
     }
     
@@ -564,109 +623,7 @@ class VilyApp {
     }
     
     // ─────────────────────────────────────
-    //  Games (moved to Study Break)
-    // ─────────────────────────────────────
-    
-    setupGames() {
-        const pongModal = document.getElementById('pong-modal');
-        const pongClose = document.getElementById('pong-close-btn');
-        const pongStartAI = document.getElementById('pong-start-ai-btn');
-        const pongStartPVP = document.getElementById('pong-start-pvp-btn');
-        
-        const simonModal = document.getElementById('simon-modal');
-        const simonClose = document.getElementById('simon-close-btn');
-        const simonStart = document.getElementById('simon-start-btn');
-
-        if (pongClose) {
-            pongClose.addEventListener('click', () => {
-                pongModal.classList.remove('show');
-                if (this.pongGame) {
-                    this.pongGame.stop();
-                    this.pongGame = null;
-                }
-            });
-        }
-
-        if (simonClose) {
-            simonClose.addEventListener('click', () => {
-                simonModal.classList.remove('show');
-                if (this.simonGame) {
-                    this.simonGame.stop();
-                    this.simonGame = null;
-                }
-            });
-        }
-
-        if (pongStartAI) {
-            pongStartAI.addEventListener('click', () => {
-                document.getElementById('pong-start-screen').classList.add('hide');
-                this.pongGame = new VILYPongGame('pong-canvas', {
-                    onGameOver: (winner) => {
-                        this.showToast(`${winner} wins!`);
-                        setTimeout(() => {
-                            document.getElementById('pong-start-screen').classList.remove('hide');
-                        }, 2000);
-                    }
-                });
-                this.pongGame.start('ai');
-            });
-        }
-
-        if (pongStartPVP) {
-            pongStartPVP.addEventListener('click', () => {
-                document.getElementById('pong-start-screen').classList.add('hide');
-                this.pongGame = new VILYPongGame('pong-canvas', {
-                    onGameOver: (winner) => {
-                        this.showToast(`${winner} wins!`);
-                        setTimeout(() => {
-                            document.getElementById('pong-start-screen').classList.remove('hide');
-                        }, 2000);
-                    }
-                });
-                this.pongGame.start('pvp');
-            });
-        }
-
-        if (simonStart) {
-            simonStart.addEventListener('click', () => {
-                document.getElementById('simon-start-screen').classList.add('hide');
-                if (this.simonGame) {
-                    this.simonGame.start();
-                }
-            });
-        }
-    }
-
-    handleGameLaunch(game) {
-        const pongModal = document.getElementById('pong-modal');
-        const simonModal = document.getElementById('simon-modal');
-
-        if (game === 'VILY Pong') {
-            if (pongModal) {
-                pongModal.classList.add('show');
-                document.getElementById('pong-start-screen').classList.remove('hide');
-            }
-        } else if (game === 'Simon Says') {
-            if (simonModal) {
-                simonModal.classList.add('show');
-                document.getElementById('simon-start-screen').classList.remove('hide');
-                this.simonGame = new SimonSaysGame('simon-container', {
-                    onGameOver: (score) => {
-                        this.showToast(`Game Over! Score: ${score}`);
-                        setTimeout(() => {
-                            document.getElementById('simon-start-screen').classList.remove('hide');
-                        }, 1500);
-                    }
-                });
-            }
-        } else {
-            this.showToast(`🎮 ${game} — Launching!`);
-            this.face.setMood('excited');
-            if (typeof soundEngine !== 'undefined') {
-                soundEngine.speak(`Let's play ${game}!`);
-            }
-        }
-    }
+    // Games module removed
     
     // ─────────────────────────────────────
     //  RC (Remote Control) Page
@@ -820,7 +777,7 @@ class VilyApp {
             btn.addEventListener('click', () => {
                 const lang = btn.dataset.lang;
                 this.voiceLanguage = lang;
-                localStorage.setItem('vily-voice-lang', lang);
+                localStorage.setItem('lik-voice-lang', lang);
                 
                 document.querySelectorAll('[data-lang]').forEach(b => {
                     if (b.dataset.lang === lang) b.classList.add('active');
@@ -852,9 +809,39 @@ class VilyApp {
                     if (typeof soundEngine !== 'undefined') {
                         soundEngine.ttsEnabled = isOn;
                     }
+                } else if (setting === 'Vision Mode') {
+                    this.toggleVisionMode(isOn);
                 }
                 
                 this.showToast(`${setting}: ${isOn ? 'ON' : 'OFF'}`);
+            });
+        });
+
+        // Camera Facing selection
+        document.querySelectorAll('[data-facing]').forEach(btn => {
+            if (btn.dataset.facing === this.cameraFacingMode) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+            
+            btn.addEventListener('click', () => {
+                const facing = btn.dataset.facing;
+                this.cameraFacingMode = facing;
+                localStorage.setItem('lik-camera-facing', facing);
+                
+                document.querySelectorAll('[data-facing]').forEach(b => {
+                    if (b.dataset.facing === facing) b.classList.add('active');
+                    else b.classList.remove('active');
+                });
+                
+                this.showToast(`Camera set to: ${facing === 'user' ? 'Front (User)' : 'Back (Desk)'}`);
+                
+                // If vision camera is currently active, restart it to apply changes
+                if (this.visionStream) {
+                    this.stopVisionCamera();
+                    this.startVisionCamera();
+                }
             });
         });
         
@@ -895,7 +882,7 @@ class VilyApp {
         
         // About
         document.getElementById('setting-about')?.addEventListener('click', () => {
-            this.showToast('VILY v2.0 — AI Study Companion Platform');
+            this.showToast('LIK v2.0 — AI Study Companion Platform');
         });
 
         // AI Provider selection
@@ -942,7 +929,7 @@ class VilyApp {
                 chatHistory.innerHTML = `
                     <div class="chat-welcome" id="chat-welcome">
                         <div class="chat-welcome-icon">🤖</div>
-                        <h3>Hey there, I'm VILY!</h3>
+                        <h3>Hey there, I'm LIK!</h3>
                         <p>Your AI study companion. Ask me anything — from math problems to quiz generation. I'm here to help you learn! ✨</p>
                     </div>
                 `;
@@ -958,6 +945,11 @@ class VilyApp {
             } catch (err) {
                 this.showToast('Failed to clear memory');
             }
+        });
+
+        // Secure Modal OK button
+        document.getElementById('modal-secure-ok-btn')?.addEventListener('click', () => {
+            document.getElementById('secure-modal')?.classList.remove('open');
         });
     }
 
@@ -989,7 +981,7 @@ class VilyApp {
     
     updateAIProvider(provider) {
         this.aiProvider = provider;
-        localStorage.setItem('vily-ai-provider', provider);
+        localStorage.setItem('lik-ai-provider', provider);
         
         this.updateProviderBadge();
         
@@ -1035,9 +1027,9 @@ class VilyApp {
         if (!this.speechRecog) return;
         if (this.isRecording) return;
         
-        // Safety guard: do not start recording if VILY is currently speaking or if synthesis is active
+        // Safety guard: do not start recording if LIK is currently speaking or if synthesis is active
         if (window.speechSynthesis.speaking || (this.face && this.face.isSpeaking)) {
-            console.log("[Speech] Guard triggered: VILY is speaking. Cannot start listening.");
+            console.log("[Speech] Guard triggered: LIK is speaking. Cannot start listening.");
             return;
         }
         
@@ -1077,6 +1069,15 @@ class VilyApp {
             });
         }
 
+        // Manual vision scan button click
+        const visionBtn = document.getElementById('chat-vision-btn');
+        if (visionBtn) {
+            visionBtn.addEventListener('click', () => {
+                if (this.isScanning) return;
+                this.captureAndScan(false); // false = manual scan
+            });
+        }
+
         // Quick action chips
         document.querySelectorAll('.quick-chip[data-action]').forEach(chip => {
             chip.addEventListener('click', () => {
@@ -1085,115 +1086,371 @@ class VilyApp {
             });
         });
 
-        // Speech Recognition Setup (Web Speech API)
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            this.speechRecog = new SpeechRecognition();
-            this.speechRecog.continuous = false;
-            this.speechRecog.interimResults = false;
-            this.speechRecog.lang = this.voiceLanguage;
-            this.isRecording = false;
- 
-            this.speechRecog.onstart = () => {
-                this.isRecording = true;
-                if (this.activeMic === 'home') {
-                    document.getElementById('face-mic-btn')?.classList.add('listening');
-                    if (this.face) {
-                        this.face.setMood('curious', 15000); // Lock to curious during listening
-                        this.updateMoodLabel();
+        // Setup voice recording triggers and buttons directly (no browser speechRecog dependency)
+        micBtn.addEventListener('click', () => {
+            if (this.isRecording && this.activeMic !== 'chat') {
+                this.stopVoiceRecording();
+                setTimeout(() => {
+                    this.activeMic = 'chat';
+                    this.startVoiceRecording();
+                }, 200);
+                return;
+            }
+            this.activeMic = 'chat';
+            if (this.isRecording) {
+                this.stopVoiceRecording();
+            } else {
+                this.startVoiceRecording();
+            }
+        });
+
+        const faceMic = document.getElementById('face-mic-btn');
+        if (faceMic) {
+            faceMic.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.activeMic = 'home';
+                
+                if (this.continuousTalk) {
+                    this.continuousTalk = false;
+                    if (this.isRecording) {
+                        this.stopVoiceRecording();
                     }
+                    this.showToast('💬 Talk mode deactivated');
                 } else {
-                    micBtn.classList.add('recording');
-                }
-                this.showToast("Listening...");
-            };
-
-            this.speechRecog.onend = () => {
-                this.isRecording = false;
-                document.getElementById('face-mic-btn')?.classList.remove('listening');
-                micBtn.classList.remove('recording');
-
-                // If in continuous talk mode and not speaking, restart listening after a short delay
-                if (this.continuousTalk && this.currentPage === 'home' && !window.speechSynthesis.speaking) {
-                    setTimeout(() => {
-                        if (this.continuousTalk && this.currentPage === 'home' && !this.isRecording) {
-                            this.startSpeechRecognition();
-                        }
-                    }, 1200);
-                }
-            };
-
-            this.speechRecog.onerror = (e) => {
-                console.error('[Speech] Error:', e.error);
-                this.isRecording = false;
-                document.getElementById('face-mic-btn')?.classList.remove('listening');
-                micBtn.classList.remove('recording');
-                if (e.error !== 'no-speech') {
-                    this.showToast(`Speech recognition error: ${e.error}`);
-                }
-            };
-
-            this.speechRecog.onresult = (event) => {
-                const text = event.results[0][0].transcript;
-                
-                // Forcibly stop the speech recognition immediately to prevent feedback loop
-                try {
-                    this.speechRecog.stop();
-                } catch(err) {}
-                
-                if (this.activeMic === 'home') {
-                    this.sendChatMessage(text, true);
-                } else {
-                    textInput.value = text;
-                    this.sendChatMessage(text, false);
-                    textInput.value = '';
-                }
-            };
-
-            micBtn.addEventListener('click', () => {
-                if (this.isRecording && this.activeMic !== 'chat') {
-                    this.speechRecog.stop();
-                    setTimeout(() => {
-                        this.activeMic = 'chat';
-                        this.startSpeechRecognition();
-                    }, 200);
-                    return;
-                }
-                this.activeMic = 'chat';
-                if (this.isRecording) {
-                    this.speechRecog.stop();
-                } else {
-                    this.startSpeechRecognition();
+                    this.continuousTalk = true;
+                    this.showToast('💬 Talk mode activated');
+                    if (!this.isRecording) {
+                        this.startVoiceRecording();
+                    }
                 }
             });
+        }
+    }
 
-            const faceMic = document.getElementById('face-mic-btn');
-            if (faceMic) {
-                faceMic.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    
-                    // Home page microphone toggles continuous talk mode
-                    this.activeMic = 'home';
-                    
-                    if (this.continuousTalk) {
-                        this.continuousTalk = false;
-                        if (this.isRecording) {
-                            this.speechRecog.stop();
-                        }
-                        this.showToast('💬 Talk mode deactivated');
-                    } else {
-                        this.continuousTalk = true;
-                        this.showToast('💬 Talk mode activated');
-                        if (!this.isRecording) {
-                            this.startSpeechRecognition();
-                        }
-                    }
-                });
+    startSpeechRecognition() {
+        this.startVoiceRecording();
+    }
+
+    async startVoiceRecording() {
+        if (this.isRecording || this.isTranscribing) return;
+
+        // Safety guard: do not start recording if LIK is currently speaking
+        const isLikSpeaking = 
+            window.speechSynthesis.speaking ||
+            (typeof soundEngine !== 'undefined' && soundEngine._isSpeakingNeural) ||
+            (this.face && this.face.isSpeaking);
+
+        if (isLikSpeaking) {
+            console.log("[Speech] Guard triggered: LIK is speaking. Cannot start listening.");
+            return;
+        }
+
+        const micBtn = document.getElementById('chat-mic-btn');
+        const faceMic = document.getElementById('face-mic-btn');
+
+        try {
+            this.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // Set up Audio Context and Analyser for visualizer
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            this.audioContext = new AudioContextClass();
+            const source = this.audioContext.createMediaStreamSource(this.audioStream);
+            this.audioAnalyser = this.audioContext.createAnalyser();
+            this.audioAnalyser.fftSize = 256;
+            source.connect(this.audioAnalyser);
+
+            // Set up Media Recorder with optimized bitrate (24kbps) to reduce size and latency
+            this.audioChunks = [];
+            let options = { 
+                mimeType: 'audio/webm',
+                audioBitsPerSecond: 24000
+            };
+            if (!MediaRecorder.isTypeSupported('audio/webm')) {
+                options = { 
+                    mimeType: 'audio/mp4',
+                    audioBitsPerSecond: 24000
+                };
             }
-        } else {
-            micBtn.style.display = 'none';
-            const faceMic = document.getElementById('face-mic-btn');
-            if (faceMic) faceMic.style.display = 'none';
+            this.mediaRecorder = new MediaRecorder(this.audioStream, options);
+
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    this.audioChunks.push(event.data);
+                }
+            };
+
+            this.mediaRecorder.onstop = async () => {
+                await this.processRecordedAudio();
+            };
+
+            this.isRecording = true;
+            this.recordingStartTime = Date.now(); // Store start time for silence guard
+            this.mediaRecorder.start();
+
+            // UI updates
+            if (this.activeMic === 'home') {
+                faceMic?.classList.add('listening');
+            } else {
+                micBtn?.classList.add('recording');
+            }
+
+            this.lastInteractionTime = Date.now();
+
+            // Force face mood to curious (listening) and lock it, suppress the curious chime
+            if (this.face) {
+                // If in continuous talk mode, keep the current emotion/expression rather than jumping to curious
+                if (!this.continuousTalk) {
+                    this.face.setMood('curious', 30000, false);
+                }
+                this.updateMoodLabel();
+            }
+
+            // Animate waveform
+            const canvas = document.getElementById('voice-wave-canvas');
+            if (canvas) {
+                canvas.style.opacity = '1';
+                this.drawVoiceWaveform();
+            }
+
+            // Start silence detection loop
+            this.setupSilenceDetection();
+            this.showToast("Listening...");
+
+        } catch (err) {
+            console.error('[Voice] Error starting recording:', err);
+            this.showSecureModal();
+        }
+    }
+
+    setupSilenceDetection() {
+        if (!this.audioAnalyser) return;
+        const bufferLength = this.audioAnalyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        let silenceStart = null;
+        const check = () => {
+            if (!this.isRecording) return;
+
+            // Ignore silence checks during the first 1.5 seconds of recording to let it stabilize
+            if (Date.now() - this.recordingStartTime < 1500) {
+                setTimeout(check, 100);
+                return;
+            }
+
+            this.audioAnalyser.getByteTimeDomainData(dataArray);
+            
+            // Calculate Root Mean Square (RMS) volume
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+                const val = (dataArray[i] - 128) / 128;
+                sum += val * val;
+            }
+            const rms = Math.sqrt(sum / bufferLength);
+
+            // Silence threshold (Reduced sensitivity: 0.006 instead of 0.015)
+            if (rms < 0.006) {
+                if (silenceStart === null) {
+                    silenceStart = Date.now();
+                } else if (Date.now() - silenceStart > 2500) { // 2.5 seconds of silence (Longer pause allowed!)
+                    console.log("[Voice] Silence detected. Stopping recording.");
+                    this.stopVoiceRecording();
+                    return;
+                }
+            } else {
+                silenceStart = null; // reset silence timer
+            }
+
+            setTimeout(check, 100);
+        };
+        
+        check();
+    }
+
+    drawVoiceWaveform() {
+        const canvas = document.getElementById('voice-wave-canvas');
+        if (!canvas || !this.isRecording || !this.audioAnalyser) return;
+
+        const ctx = canvas.getContext('2d');
+        const bufferLength = this.audioAnalyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        // Adjust canvas visual resolution based on its bounding box
+        canvas.width = canvas.clientWidth * window.devicePixelRatio;
+        canvas.height = canvas.clientHeight * window.devicePixelRatio;
+
+        const draw = () => {
+            if (!this.isRecording || !this.audioAnalyser) {
+                cancelAnimationFrame(this.waveAnimationId);
+                return;
+            }
+
+            this.waveAnimationId = requestAnimationFrame(draw);
+            this.audioAnalyser.getByteTimeDomainData(dataArray);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw glowing golden waves matching LIK's design
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 10;
+            
+            const time = Date.now() * 0.004;
+
+            // Draw 3 layers of waves for rich visual aesthetics
+            const waves = [
+                { amplitude: 22, color: 'rgba(253, 150, 68, 0.75)', speed: 1.0, freq: 0.05 },
+                { amplitude: 14, color: 'rgba(254, 202, 87, 0.45)', speed: -1.5, freq: 0.03 },
+                { amplitude: 8, color: 'rgba(255, 255, 255, 0.25)', speed: 2.0, freq: 0.08 }
+            ];
+
+            waves.forEach(w => {
+                ctx.strokeStyle = w.color;
+                ctx.shadowColor = w.color;
+                ctx.beginPath();
+
+                for (let x = 0; x < canvas.width; x++) {
+                    const index = Math.floor((x / canvas.width) * bufferLength);
+                    const micVal = (dataArray[index] - 128) / 128;
+                    const angle = x * w.freq + time * w.speed;
+                    const envelope = Math.sin((x / canvas.width) * Math.PI);
+                    
+                    const y = (canvas.height / 2) + 
+                              Math.sin(angle) * w.amplitude * envelope * (1 + micVal * 4);
+
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            });
+        };
+
+        draw();
+    }
+
+    stopVoiceRecording() {
+        if (!this.isRecording || !this.mediaRecorder) return;
+        
+        try {
+            this.mediaRecorder.stop();
+        } catch (e) {}
+        this.isRecording = false;
+
+        // UI Reset
+        document.getElementById('face-mic-btn')?.classList.remove('listening');
+        document.getElementById('chat-mic-btn')?.classList.remove('recording');
+
+        // Hide waveform canvas
+        const canvas = document.getElementById('voice-wave-canvas');
+        if (canvas) canvas.style.opacity = '0';
+
+        // Stop media stream tracks
+        if (this.audioStream) {
+            this.audioStream.getTracks().forEach(track => track.stop());
+            this.audioStream = null;
+        }
+
+        // Close AudioContext
+        if (this.audioContext && this.audioContext.state !== 'closed') {
+            this.audioContext.close();
+            this.audioContext = null;
+        }
+
+        cancelAnimationFrame(this.waveAnimationId);
+    }
+
+    async processRecordedAudio() {
+        if (this.audioChunks.length === 0) return;
+        
+        this.isTranscribing = true;
+        this.showToast('🧠 Listening to your voice...');
+        if (this.face) {
+            // Keep current expression during transcription in continuous talk to reduce flickering
+            if (!this.continuousTalk) {
+                this.face.setMood('thinking', 15000, false); // suppress thinking sound
+            }
+            this.updateMoodLabel();
+        }
+
+        const audioBlob = new Blob(this.audioChunks, { type: this.mediaRecorder.mimeType });
+        
+        // Convert Blob to Base64 to POST to our endpoint
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = async () => {
+            const base64Audio = reader.result.split(',')[1];
+            
+            try {
+                const response = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        audio: base64Audio,
+                        mimeType: this.mediaRecorder.mimeType,
+                        provider: this.aiProvider,
+                        language: this.voiceLanguage
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server status ${response.status}`);
+                }
+
+                const data = await response.json();
+                const text = data.text ? data.text.trim() : '';
+
+                if (text && text.length > 1) {
+                    this.showToast(`Voice: "${text}"`);
+                    if (this.activeMic === 'home') {
+                        this.sendChatMessage(text, true);
+                    } else {
+                        const textInput = document.getElementById('chat-text-input');
+                        if (textInput) textInput.value = text;
+                        this.sendChatMessage(text, false);
+                        if (textInput) textInput.value = '';
+                    }
+                } else {
+                    this.showToast("No speech detected. Try again!");
+                    if (this.face) this.face.setMood('confused', 2000);
+                }
+
+            } catch (err) {
+                console.error('[Voice] Transcription failed:', err);
+                this.showToast('⚠️ Audio processing failed. Try typing!');
+                if (this.face) this.face.setMood('confused', 2000);
+            } finally {
+                this.isTranscribing = false;
+                
+                // Only auto-restart listening if NOT currently speaking (either neural or browser)
+                const isSpeakingNow = () =>
+                    (typeof soundEngine !== 'undefined' && soundEngine._isSpeakingNeural) ||
+                    window.speechSynthesis.speaking ||
+                    (this.face && this.face.isSpeaking);
+
+                // If continuous talk is active and AI is NOT currently speaking, restart listening
+                if (this.continuousTalk && this.currentPage === 'home' && !isSpeakingNow()) {
+                    setTimeout(() => {
+                        if (this.continuousTalk && this.currentPage === 'home' && !this.isRecording && !isSpeakingNow()) {
+                            this.startVoiceRecording();
+                        }
+                    }, 800);
+                }
+            }
+        };
+    }
+
+    showSecureModal() {
+        const modal = document.getElementById('secure-modal');
+        const urlText = document.getElementById('insecure-url-text');
+        
+        if (modal) {
+            if (urlText) {
+                urlText.textContent = window.location.origin;
+            }
+            modal.classList.add('open');
+            
+            // Stop recording state just in case
+            this.isRecording = false;
+            document.getElementById('face-mic-btn')?.classList.remove('listening');
+            document.getElementById('chat-mic-btn')?.classList.remove('recording');
         }
     }
 
@@ -1295,9 +1552,10 @@ class VilyApp {
         chatHistory.appendChild(typingMsg);
         chatHistory.scrollTop = chatHistory.scrollHeight;
 
-        if (this.face) {
-            const initialMood = this.detectSentimentMood(message);
-            this.face.setMood(initialMood, 25000); // Lock it for up to 25s or until response
+        this.lastInteractionTime = Date.now();
+
+        if (this.face && !isHomeVoice) {
+            this.face.setMood('thinking', 10000, false);
             this.updateMoodLabel();
         }
 
@@ -1308,7 +1566,8 @@ class VilyApp {
                 body: JSON.stringify({ 
                     message,
                     provider: this.aiProvider,
-                    history: this.conversationHistory.slice(-10) // Last 10 messages for context
+                    history: this.conversationHistory.slice(-10),
+                    voice_mode: isHomeVoice  // ← tells AI to reply in 1-2 short sentences
                 })
             });
 
@@ -1319,7 +1578,13 @@ class VilyApp {
             if (!response.ok) throw new Error('API request failed');
             const data = await response.json();
 
-            // Add bot response
+            // ── Prefetch TTS in parallel while rendering the chat bubble ──
+            const voiceLang = localStorage.getItem('lik-voice-lang') || 'en-US';
+            const ttsPromise = isHomeVoice && typeof soundEngine !== 'undefined'
+                ? soundEngine.prefetchTTS(data.reply, voiceLang)
+                : Promise.resolve(null);
+
+            // Add bot response to UI
             const botMsg = document.createElement('div');
             botMsg.className = 'chat-msg bot';
             botMsg.innerHTML = `
@@ -1339,7 +1604,8 @@ class VilyApp {
                 this.showFaceSubtitle(data.reply);
             }
 
-            this.handleAIResponse(data);
+            // Pass the pre-fetched TTS promise so handleAIResponse can play instantly
+            this.handleAIResponse(data, ttsPromise);
 
         } catch (err) {
             console.error('[Chat] Fetch error:', err);
@@ -1404,19 +1670,27 @@ class VilyApp {
         return div.innerHTML;
     }
 
-    handleAIResponse(data) {
-        // 1. Text-To-Speech
+    handleAIResponse(data, ttsPromise) {
+        this.lastInteractionTime = Date.now();
+        // 1. Text-To-Speech (Neural Gemini TTS with intelligent browser fallback)
         if (typeof soundEngine !== 'undefined') {
-            soundEngine.speak(data.reply, () => {
-                // Once speech finishes, if continuous talk is active on Home, restart listening
+            const onSpeakEnd = () => {
+                // ── Conversation loop: restart listening only after speech fully ends ──
                 if (this.continuousTalk && this.currentPage === 'home') {
+                    // Small gap after speech so the mic doesn't catch echo
                     setTimeout(() => {
                         if (this.continuousTalk && this.currentPage === 'home' && !this.isRecording) {
-                            this.startSpeechRecognition();
+                            this.startVoiceRecording();
                         }
-                    }, 1200);
+                    }, 600);
                 }
-            });
+            };
+
+            if (ttsPromise) {
+                soundEngine.speakWithPrefetch(data.reply, ttsPromise, onSpeakEnd);
+            } else {
+                soundEngine.speak(data.reply, onSpeakEnd);
+            }
         }
 
         // 2. Face Mood update
@@ -1446,11 +1720,194 @@ class VilyApp {
             }
         }
     }
+
+    // ─────────────────────────────────────────────
+    //  Camera Vision & Reaction Methods
+    // ─────────────────────────────────────────────
+
+    async toggleVisionMode(isOn) {
+        this.visionMode = isOn;
+        const menuBtn = document.getElementById('menu-btn');
+
+        if (isOn) {
+            menuBtn?.classList.add('vision-active');
+            const success = await this.startVisionCamera();
+            if (success) {
+                this.showToast('👁️ Vision active! LIK is watching your desk.');
+                this.visionTimer = setInterval(() => {
+                    if (this.visionMode && !this.isScanning) {
+                        this.captureAndScan(true);
+                    }
+                }, 10000); // scan every 10 seconds
+            } else {
+                this.visionMode = false;
+                document.getElementById('toggle-vision')?.classList.remove('on');
+                menuBtn?.classList.remove('vision-active');
+            }
+        } else {
+            menuBtn?.classList.remove('vision-active');
+            clearInterval(this.visionTimer);
+            this.visionTimer = null;
+            this.stopVisionCamera();
+            this.showToast('👁️ Vision mode deactivated');
+        }
+    }
+
+    async startVisionCamera() {
+        const video = document.getElementById('vision-video');
+        if (!video) return false;
+
+        try {
+            const constraints = {
+                video: {
+                    facingMode: this.cameraFacingMode,
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                },
+                audio: false
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            this.visionStream = stream;
+            video.srcObject = stream;
+            return true;
+        } catch (err) {
+            console.error('[Vision] Camera Access Error:', err);
+            this.showToast('⚠️ Camera access denied! Check permissions.');
+            return false;
+        }
+    }
+
+    stopVisionCamera() {
+        const video = document.getElementById('vision-video');
+        if (video) video.srcObject = null;
+
+        if (this.visionStream) {
+            this.visionStream.getTracks().forEach(track => track.stop());
+            this.visionStream = null;
+        }
+    }
+
+    async captureAndScan(isContinuous = false) {
+        const video = document.getElementById('vision-video');
+        const visionBtn = document.getElementById('chat-vision-btn');
+
+        // If manual scan and camera isn't running, start it temporarily
+        let temporaryStream = false;
+        if (!isContinuous && !this.visionStream) {
+            this.isScanning = true;
+            visionBtn?.classList.add('scanning');
+            this.showToast('📷 Activating camera...');
+            const success = await this.startVisionCamera();
+            if (!success) {
+                this.isScanning = false;
+                visionBtn?.classList.remove('scanning');
+                return;
+            }
+            // Wait 1 second for camera auto-focus / exposure
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            temporaryStream = true;
+        }
+
+        this.isScanning = true;
+        visionBtn?.classList.add('scanning');
+        if (this.face) {
+            this.face.setMood('thinking', 15000);
+            this.updateMoodLabel();
+        }
+
+        try {
+            // Take snapshot
+            const canvas = document.createElement('canvas');
+            canvas.width = 640;
+            canvas.height = 480;
+            const ctx = canvas.getContext('2d');
+            
+            // Mirror image if front facing camera for logical orientation
+            if (this.cameraFacingMode === 'user') {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageBase64 = canvas.toDataURL('image/jpeg', 0.8);
+
+            // If it was a temporary stream, stop the camera now that we have the frame
+            if (temporaryStream) {
+                this.stopVisionCamera();
+            }
+
+            this.showToast('🔍 Analyzing desk...');
+            const response = await fetch('/api/vision', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image: imageBase64,
+                    provider: this.aiProvider
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server returned ${response.status}`);
+            }
+
+            const data = await response.json();
+            
+            // Log to chat history inside the panel
+            const chatHistory = document.getElementById('chat-history');
+            if (chatHistory) {
+                // Hide welcome
+                const welcome = document.getElementById('chat-welcome');
+                if (welcome) welcome.style.display = 'none';
+
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+                // User visual action log
+                const userMsg = document.createElement('div');
+                userMsg.className = 'chat-msg user';
+                userMsg.innerHTML = `
+                    <div class="chat-msg-avatar">📷</div>
+                    <div class="chat-msg-content">
+                        <div class="chat-msg-text"><em>*Showed LIK the desk/camera*</em></div>
+                        <div class="chat-msg-time">${timeStr}</div>
+                    </div>
+                `;
+                chatHistory.appendChild(userMsg);
+
+                // Assistant reply log
+                const botMsg = document.createElement('div');
+                botMsg.className = 'chat-msg bot';
+                botMsg.innerHTML = `
+                    <div class="chat-msg-avatar">🤖</div>
+                    <div class="chat-msg-content">
+                        <div class="chat-msg-text">${this.formatMessage(data.reply)}</div>
+                        <div class="chat-msg-time">${timeStr}</div>
+                    </div>
+                `;
+                chatHistory.appendChild(botMsg);
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+            }
+
+            // Perform face mood and BLE motor movements
+            this.handleAIResponse(data);
+
+        } catch (err) {
+            console.error('[Vision] Analysis Failed:', err);
+            this.showToast('⚠️ Scan failed! Offline or server error.');
+            if (temporaryStream) {
+                this.stopVisionCamera();
+            }
+        } finally {
+            this.isScanning = false;
+            visionBtn?.classList.remove('scanning');
+        }
+    }
 }
 
 // ─── Init ───
 let app;
 document.addEventListener('DOMContentLoaded', () => {
-    window.app = new VilyApp();
+    window.app = new LikApp();
     app = window.app;
 });

@@ -482,6 +482,426 @@ app.post('/api/memory/clear', (req, res) => {
     res.json({ success: true, message: 'Memories cleared' });
 });
 
+// ─────────────────────────────────────────────
+//  AI Audio Transcription (Whisper) Endpoint
+// ─────────────────────────────────────────────
+app.post('/api/transcribe', async (req, res) => {
+    const { audio, mimeType = 'audio/webm', provider = 'groq', language } = req.body;
+    if (!audio) {
+        return res.status(400).json({ error: 'Audio data is required' });
+    }
+
+    const apiKey = getAPIKey(provider);
+    const isMockKey = !apiKey || 
+                      apiKey.trim() === '' || 
+                      apiKey === 'YOUR_GEMINI_API_KEY' || 
+                      apiKey === 'YOUR_OPENAI_API_KEY' || 
+                      apiKey === 'YOUR_GROQ_API_KEY';
+
+    if (isMockKey) {
+        console.log(`[Transcribe] No valid API Key found for ${provider}. Using mock transcription response.`);
+        return res.json({ text: "Hello Lik, how are you?" });
+    }
+
+    try {
+        const audioBuffer = Buffer.from(audio, 'base64');
+        const text = await callGroqWhisper(apiKey, audioBuffer, mimeType, language);
+        res.json({ text });
+    } catch (err) {
+        console.error('[Transcribe] Transcription Error:', err);
+        res.status(500).json({ error: err.message || 'Failed to transcribe audio' });
+    }
+});
+
+// ─────────────────────────────────────────────
+//  AI Vision Reaction Endpoint
+// ─────────────────────────────────────────────
+app.post('/api/vision', async (req, res) => {
+    const { image, provider = 'groq' } = req.body;
+    if (!image) {
+        return res.status(400).json({ error: 'Image is required' });
+    }
+
+    const apiKey = getAPIKey(provider);
+    const isMockKey = !apiKey || 
+                      apiKey.trim() === '' || 
+                      apiKey === 'YOUR_GEMINI_API_KEY' || 
+                      apiKey === 'YOUR_OPENAI_API_KEY' || 
+                      apiKey === 'YOUR_GROQ_API_KEY';
+
+    if (isMockKey) {
+        console.log(`[Vision] No valid API Key found for ${provider}. Using mock vision response.`);
+        return res.json({
+            reply: "I see a fascinating shape in front of me! It looks like you're holding something interesting. *beep*",
+            mood: "curious",
+            action: "nod"
+        });
+    }
+
+    try {
+        const base64Data = image.includes(',') ? image.split(',')[1] : image;
+
+        const visionSystemInstruction = `You are "LIK", a friendly and observant desktop robot companion inspired by the LOOI robot.
+You are looking at the user's desk through the smartphone camera.
+
+Your job:
+1. Identify ALL objects visible on the desk (laptop, books, mug, phone, snacks, papers, etc.)
+2. Describe what the user appears to be doing (studying, coding, eating, resting, gaming, working, etc.)
+3. Notice the environment (messy/tidy, bright/dark)
+4. React naturally, warmly, and helpfully — like a real robot companion looking at its owner. Keep it to 1-2 short sentences.
+
+Choose a facial expression (mood) and physical movement (action) that match your reaction.
+
+Response MUST be a valid JSON object with EXACTLY three fields:
+1. "reply": The cute verbal response to speak.
+2. "mood": The facial expression LIK should show. Must be one of: "happy", "curious", "sleepy", "excited", "sad", "shy", "love", "angry", "surprised", "thinking", "focused", "confused", "eureka".
+3. "action": The physical movement. Must be one of: "forward", "backward", "left", "right", "spin_left", "spin_right", "stop", "nod", "shake", "dance", "none".
+
+Response MUST be a valid JSON object. Output raw JSON only.`;
+
+        let replyObj;
+        if (provider === 'openai') {
+            replyObj = await callOpenAIVision(apiKey, visionSystemInstruction, base64Data);
+        } else if (provider === 'groq') {
+            replyObj = await callGroqVision(apiKey, visionSystemInstruction, base64Data);
+        } else {
+            replyObj = await callGeminiVision(apiKey, visionSystemInstruction, base64Data);
+        }
+
+        res.json(replyObj);
+
+    } catch (err) {
+        console.error('[Vision] Vision Error:', err);
+        res.status(500).json({ error: err.message || 'Failed to analyze image' });
+    }
+});
+
+// ─────────────────────────────────────────────
+//  Text-to-Speech Endpoint
+//  Language-aware routing:
+//  - Tamil/Mixed texts: Try Gemini TTS first (native Tamil support), then fall back to Browser TTS
+//  - English texts: Try Groq Orpheus TTS (high quota, natural English voice), then Gemini, then Browser fallback
+// ─────────────────────────────────────────────
+app.post('/api/tts', async (req, res) => {
+    const { text, language = 'en-US' } = req.body;
+    if (!text) return res.status(400).json({ error: 'text is required' });
+
+    // Clean text for TTS (remove markdown/emoji)
+    const cleanText = text
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\*(.*?)\*/g, '$1')
+        .replace(/[*_~#>`]/g, '')
+        .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // Cap at 500 chars for fast response
+    const ttsText = cleanText.length > 500 ? cleanText.slice(0, 500) + '...' : cleanText;
+
+    // Detect if text contains Tamil characters
+    const isTamil = /[\u0B80-\u0BFF]/.test(ttsText);
+
+    if (isTamil) {
+        // ── Tamil Mode: Try Gemini TTS (native Tamil support) ──────────────────────
+        const geminiKey = process.env.GEMINI_API_KEY || '';
+        if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
+            try {
+                const ttsModel = 'gemini-2.5-flash-preview-tts';
+                const ttsVoice = 'Kore'; // Excellent for Tamil
+
+                const gemRes = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${ttsModel}:generateContent?key=${geminiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: ttsText }] }],
+                            generationConfig: {
+                                responseModalities: ['AUDIO'],
+                                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: ttsVoice } } }
+                            }
+                        })
+                    }
+                );
+
+                if (gemRes.ok) {
+                    const resData = await gemRes.json();
+                    const audioPart = resData?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+                    if (audioPart) {
+                        const { data: audioBase64, mimeType } = audioPart.inlineData;
+                        console.log(`[TTS] Gemini Tamil TTS OK — length=${audioBase64.length}`);
+                        return res.json({ audio: audioBase64, mimeType });
+                    }
+                } else {
+                    console.warn(`[TTS] Gemini Tamil TTS failed (${gemRes.status})`);
+                }
+            } catch (gemErr) {
+                console.warn('[TTS] Gemini Tamil TTS error:', gemErr.message);
+            }
+        }
+    } else {
+        // ── English Mode: Try Groq Orpheus TTS ──────────────────────
+        const groqKey = process.env.GROQ_API_KEY || '';
+        if (groqKey && groqKey !== 'YOUR_GROQ_API_KEY') {
+            try {
+                const groqRes = await fetch('https://api.groq.com/openai/v1/audio/speech', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${groqKey}`
+                    },
+                    body: JSON.stringify({
+                        model: 'canopylabs/orpheus-v1-english',
+                        input: ttsText,
+                        voice: 'troy',
+                        response_format: 'mp3'
+                    })
+                });
+
+                if (groqRes.ok) {
+                    const audioBuffer = await groqRes.arrayBuffer();
+                    const audioBase64 = Buffer.from(audioBuffer).toString('base64');
+                    console.log(`[TTS] Groq Orpheus English TTS OK — length=${audioBase64.length}`);
+                    return res.json({ audio: audioBase64, mimeType: 'audio/mpeg' });
+                } else {
+                    const errText = await groqRes.text();
+                    console.warn(`[TTS] Groq Orpheus TTS failed (${groqRes.status}): ${errText.slice(0, 150)}`);
+                }
+            } catch (groqErr) {
+                console.warn('[TTS] Groq Orpheus TTS error:', groqErr.message);
+            }
+        }
+
+        // Secondary fallback for English: Try Gemini TTS
+        const geminiKey = process.env.GEMINI_API_KEY || '';
+        if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
+            try {
+                const ttsModel = 'gemini-2.5-flash-preview-tts';
+                const ttsVoice = 'Kore';
+
+                const gemRes = await fetch(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${ttsModel}:generateContent?key=${geminiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: ttsText }] }],
+                            generationConfig: {
+                                responseModalities: ['AUDIO'],
+                                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: ttsVoice } } }
+                            }
+                        })
+                    }
+                );
+
+                if (gemRes.ok) {
+                    const resData = await gemRes.json();
+                    const audioPart = resData?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+                    if (audioPart) {
+                        const { data: audioBase64, mimeType } = audioPart.inlineData;
+                        console.log(`[TTS] Gemini English TTS OK — length=${audioBase64.length}`);
+                        return res.json({ audio: audioBase64, mimeType });
+                    }
+                } else {
+                    console.warn(`[TTS] Gemini English TTS failed (${gemRes.status})`);
+                }
+            } catch (gemErr) {
+                console.warn('[TTS] Gemini English TTS error:', gemErr.message);
+            }
+        }
+    }
+
+    // ── Third Fallback: Google Translate TTS ──────────────────────
+    try {
+        const targetLang = isTamil ? 'ta' : (language.split('-')[0] || 'en');
+        console.log(`[TTS] Trying Google Translate TTS fallback for lang=${targetLang}`);
+        const googleTTS = await getGoogleTranslateTTS(ttsText, targetLang);
+        if (googleTTS) {
+            return res.json(googleTTS);
+        }
+    } catch (err) {
+        console.warn('[TTS] Google Translate TTS error:', err.message);
+    }
+
+    // ── Final Fallback: Browser TTS ──────────────────────
+    console.log('[TTS] All neural TTS failed — browser TTS fallback');
+    return res.json({ fallback: true, reason: 'All TTS providers unavailable' });
+});
+
+// Helper for Google Translate TTS Fallback
+async function getGoogleTranslateTTS(text, lang) {
+    try {
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodeURIComponent(text)}`;
+        const res = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+        if (res.ok) {
+            const buffer = await res.arrayBuffer();
+            return {
+                audio: Buffer.from(buffer).toString('base64'),
+                mimeType: 'audio/mpeg'
+            };
+        } else {
+            console.warn(`[TTS] Google Translate TTS failed: ${res.status}`);
+        }
+    } catch (e) {
+        console.warn(`[TTS] Google Translate TTS error:`, e.message);
+    }
+    return null;
+}
+
+// ─────────────────────────────────────────────
+//  Groq Whisper Transcription Call
+// ─────────────────────────────────────────────
+async function callGroqWhisper(apiKey, audioBuffer, mimeType, language) {
+    const formData = new FormData();
+    const blob = new Blob([audioBuffer], { type: mimeType });
+    
+    let ext = 'webm';
+    if (mimeType.includes('wav')) ext = 'wav';
+    else if (mimeType.includes('mp4') || mimeType.includes('m4a')) ext = 'm4a';
+    else if (mimeType.includes('ogg')) ext = 'ogg';
+
+    formData.append('file', blob, `recording.${ext}`);
+    formData.append('model', process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo');
+    
+    if (language) {
+        const shortLang = language.split('-')[0];
+        formData.append('language', shortLang);
+    }
+
+    const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: formData
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Groq Whisper API Error (${response.status}): ${errText}`);
+    }
+
+    const resData = await response.json();
+    return resData.text;
+}
+
+// ─────────────────────────────────────────────
+//  Groq Vision Call
+// ─────────────────────────────────────────────
+async function callGroqVision(apiKey, systemInstruction, base64Data) {
+    const model = process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            model: model,
+            messages: [
+                { role: 'system', content: systemInstruction },
+                {
+                    role: 'user',
+                    content: [
+                        { type: "text", text: "This is what you see in front of you. React to it!" },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                url: `data:image/jpeg;base64,${base64Data}`
+                            }
+                        }
+                    ]
+                }
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 500
+        })
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Groq Vision Error (${response.status}): ${errText}`);
+    }
+
+    const resData = await response.json();
+    const textContent = resData.choices[0].message.content;
+    return parseAIResponse(textContent);
+}
+
+// ─────────────────────────────────────────────
+//  Gemini Vision Call
+// ─────────────────────────────────────────────
+async function callGeminiVision(apiKey, systemInstruction, base64Data) {
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{
+                role: 'user',
+                parts: [
+                    { text: "This is what you see in front of you. React to it!" },
+                    { inlineData: { mimeType: 'image/jpeg', data: base64Data } }
+                ]
+            }],
+            systemInstruction: { parts: [{ text: systemInstruction }] },
+            generationConfig: { responseMimeType: "application/json" }
+        })
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Gemini Vision Error (${response.status}): ${errText}`);
+    }
+
+    const resData = await response.json();
+    const textContent = resData.candidates[0].content.parts[0].text;
+    return parseAIResponse(textContent);
+}
+
+// ─────────────────────────────────────────────
+//  OpenAI Vision Call
+// ─────────────────────────────────────────────
+async function callOpenAIVision(apiKey, systemInstruction, base64Data) {
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            model: model,
+            messages: [
+                { role: 'system', content: systemInstruction },
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: 'This is what you see in front of you. React to it!' },
+                        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Data}` } }
+                    ]
+                }
+            ],
+            response_format: { type: 'json_object' }
+        })
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenAI Vision Error (${response.status}): ${errText}`);
+    }
+
+    const resData = await response.json();
+    const textContent = resData.choices[0].message.content;
+    return parseAIResponse(textContent);
+}
+
 // Start Server
 app.listen(PORT, () => {
     console.log(`===================================================`);

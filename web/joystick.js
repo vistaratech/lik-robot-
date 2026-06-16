@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════
- *  VILY Virtual Slider (Lever / Dial)
+ *  LIK Virtual Slider (Lever / Dial)
  *  Tactile canvas-based RC car sliders
  * ═══════════════════════════════════════════════
  */
@@ -275,7 +275,7 @@ class VirtualSlider {
 
 /**
  * ═══════════════════════════════════════════════
- *  VILY Steering Wheel Control (Axial RC Style)
+ *  LIK Steering Wheel Control (Axial RC Style)
  *  Rotatable canvas-based steering wheel control
  * ═══════════════════════════════════════════════
  */

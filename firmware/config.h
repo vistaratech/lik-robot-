@@ -1,10 +1,10 @@
 /*
  * ╔══════════════════════════════════════════════════════════════╗
- * ║                    VILY Configuration                       ║
- * ║         ESP32 BLE Robot — Inspired by LOOI Robot            ║
+ * ║                    LIK Configuration                       ║
+ * ║         ESP32 WiFi Robot — Inspired by LOOI Robot            ║
  * ╚══════════════════════════════════════════════════════════════╝
  * 
- * Pin definitions, BLE UUIDs, motor parameters, and protocol constants.
+ * Pin definitions, WiFi/WebSocket, motor parameters, and protocol constants.
  */
 
 #ifndef CONFIG_H
@@ -13,8 +13,8 @@
 // ─────────────────────────────────────────────
 //  Device Identity
 // ─────────────────────────────────────────────
-#define DEVICE_NAME         "VILY"
-#define DEVICE_VERSION      "1.0.0"
+#define DEVICE_NAME         "LIK"
+#define DEVICE_VERSION      "2.0.0"
 #define FIRMWARE_VERSION    1
 
 // ─────────────────────────────────────────────
@@ -22,36 +22,48 @@
 // ─────────────────────────────────────────────
 #define WIFI_SSID           "Yohesh’s iPhone"
 #define WIFI_PASSWORD       "12345678"
-#define WIFI_AP_SSID        "vily"
+#define WIFI_AP_SSID        "lik"
 #define WIFI_AP_PASSWORD    "12345678"
 #define WEBSOCKET_PORT      80
-#define MDNS_HOSTNAME       "vily"
+#define MDNS_HOSTNAME       "lik"
 
 // ─────────────────────────────────────────────
-//  Motor Pins (L298N Motor Driver)
+//  Motor Pins (TB6612FNG Motor Driver)
 // ─────────────────────────────────────────────
 // Motor A (Left)
-#define MOTOR_A_IN1     25
-#define MOTOR_A_IN2     26
-#define MOTOR_A_ENA     32    // PWM speed control
+#define MOTOR_A_IN1     4
+#define MOTOR_A_IN2     5
+#define MOTOR_A_ENA     6     // PWM speed control
 
 // Motor B (Right)
-#define MOTOR_B_IN3     27
-#define MOTOR_B_IN4     14
-#define MOTOR_B_ENB     33    // PWM speed control
+#define MOTOR_B_IN3     7
+#define MOTOR_B_IN4     10
+#define MOTOR_B_ENB     20    // PWM speed control (UART0 RX pin, free on native USB)
+
+// Standby Pin on TB6612FNG should be connected directly to 3.3V (VCC)
+
+// ─────────────────────────────────────────────
+//  Servo Neck Tilt Pin
+// ─────────────────────────────────────────────
+#define SERVO_PIN       3     // MG90S Servo control pin
+
+// ─────────────────────────────────────────────
+//  Cliff Sensors (TCRT5000)
+// ─────────────────────────────────────────────
+#define CLIFF_PIN_L     1     // Left sensor digital output
+#define CLIFF_PIN_R     2     // Right sensor digital output
 
 // ─────────────────────────────────────────────
 //  LED Pins
 // ─────────────────────────────────────────────
-#define LED_ONBOARD     2     // Built-in blue LED
-#define LED_R           4     // External RGB — Red
-#define LED_G           16    // External RGB — Green
-#define LED_B           17    // External RGB — Blue
+#define USE_NEOPIXEL          // Enable onboard WS2812 NeoPixel control
+#define LED_NEOPIXEL_PIN 8    // Onboard NeoPixel pin on ESP32-C3 Super Mini
+#define LED_ONBOARD     8     // Onboard LED pin alias
 
 // ─────────────────────────────────────────────
 //  Battery Monitoring
 // ─────────────────────────────────────────────
-#define BATTERY_PIN         34    // ADC input (voltage divider)
+#define BATTERY_PIN         0     // ADC1_CH0 (GPIO 0)
 #define BATTERY_MAX_V       8.4   // Fully charged (2S LiPo)
 #define BATTERY_MIN_V       6.0   // Cutoff voltage
 #define BATTERY_DIVIDER_R   2.0   // Voltage divider ratio (R1=R2)
@@ -64,14 +76,17 @@
 #define MOTOR_PWM_RES       8      // PWM resolution (8-bit = 0-255)
 #define MOTOR_PWM_CH_A      0      // LEDC channel for Motor A
 #define MOTOR_PWM_CH_B      1      // LEDC channel for Motor B
+#define LED_PWM_CH_R        2      // LEDC channel for Red LED (fallback)
+#define LED_PWM_CH_G        3      // LEDC channel for Green LED (fallback)
+#define LED_PWM_CH_B_CH     4      // LEDC channel for Blue LED (fallback)
 #define MOTOR_MIN_PWM       60     // Minimum PWM to overcome friction
 #define MOTOR_MAX_PWM       255    // Maximum PWM
 
 // Speed mapping: command value (0-100) → PWM (MOTOR_MIN_PWM to MOTOR_MAX_PWM)
-#define SPEED_TO_PWM(speed) map(speed, 0, 100, MOTOR_MIN_PWM, MOTOR_MAX_PWM)
+#define SPEED_TO_PWM(speed) ((speed) == 0 ? 0 : map(speed, 1, 100, MOTOR_MIN_PWM, MOTOR_MAX_PWM))
 
 // ─────────────────────────────────────────────
-//  BLE Protocol — Command Bytes
+//  Command Protocol — Command Bytes
 // ─────────────────────────────────────────────
 /*
  * Command Packet Format (8 bytes):

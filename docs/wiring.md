@@ -1,4 +1,4 @@
-# VILY Hardware Wiring Guide
+# LIK Hardware Wiring Guide
 
 ## Components Required
 

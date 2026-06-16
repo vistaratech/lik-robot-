@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIK AI Study Companion Robot Project Report</title>
+    <style>
+        :root {
+            --primary-color: #00acc1;
+            --secondary-color: #0022ff;
+            --dark-color: #212121;
+            --light-bg: #f8f9fa;
+            --border-color: #e0e0e0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: var(--dark-color);
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: 40px auto;
+            padding: 40px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            background-color: #ffffff;
+        }
+
+        /* Print formatting */
+        @media print {
+            body {
+                background-color: #ffffff;
+                color: #000000;
+            }
+
+            .container {
+                margin: 0;
+                padding: 0;
+                border: none;
+                box-shadow: none;
+                max-width: 100%;
+            }
+
+            .page-break {
+                page-break-before: always;
+            }
+
+            .no-print {
+                display: none;
+            }
+        }
+
+        .no-print-bar {
+            background-color: #e3f2fd;
+            color: #0d47a1;
+            padding: 15px;
+            text-align: center;
+            font-weight: bold;
+            border-bottom: 1px solid #bbdefb;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .btn-print {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: background 0.3s;
+        }
+
+        .btn-print:hover {
+            background-color: #00838f;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4 {
+            color: var(--dark-color);
+            font-weight: 700;
+        }
+
+        h1 {
+            font-size: 32px;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 10px;
+            margin-top: 0;
+            text-align: center;
+        }
+
+        h2 {
+            font-size: 22px;
+            color: #006064;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 18px;
+            color: #555;
+            margin-top: -5px;
+            margin-bottom: 30px;
+            font-style: italic;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 15px;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: var(--light-bg);
+            font-weight: bold;
+            color: #006064;
+        }
+
+        tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+
+        .img-container {
+            text-align: center;
+            margin: 30px 0;
+            background-color: #fafafa;
+            padding: 20px;
+            border: 1px dashed var(--border-color);
+            border-radius: 6px;
+        }
+
+        .img-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .caption {
+            font-size: 13px;
+            color: #777;
+            margin-top: 10px;
+            font-style: italic;
+        }
+
+        .alert {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .alert-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .flowchart {
+            background-color: #f1f8e9;
+            border-left: 5px solid #8bc34a;
+            color: #33691e;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="no-print no-print-bar">
+        📄 LIK Robot Project Report (HTML Version)<br>
+        <button class="btn-print" onclick="window.print()">Print / Save as PDF</button>
+    </div>
+
+    <div class="container">
+        <h1>🤖 LIK AI Study Companion Robot</h1>
+        <div class="subtitle">Complete Project Report & Implementation Guide</div>
+
+        <section>
+            <h2>📌 1. Project Overview & Vision</h2>
+            <p>The <strong>LIK Robot</strong> is a low-cost, AI-powered desktop study companion robot inspired by the
+                biomimetic design of the <strong>LOOI Robot</strong>.</p>
+            <ul>
+                <li><strong>Dual-Platform Architecture</strong>: Instead of using expensive built-in processors,
+                    screens, and cameras, LIK leverages a standard <strong>smartphone</strong> as its "face" and
+                    "brain". The phone runs a web application displaying animated facial expressions, executing face
+                    tracking, and parsing hand gestures.</li>
+                <li><strong>Physical Body (ESP32)</strong>: A tracked/wheeled robotic base houses an ESP32
+                    microcontroller, a motor driver, a tilt servo, and proximity sensors.</li>
+                <li><strong>Wireless Communication</strong>: The phone and the ESP32 communicate in real-time over
+                    <strong>WebSockets</strong> via WiFi, allowing low-latency (sub-millisecond) command transmission.
+                </li>
+                <li><strong>AI Integration</strong>: When the user chats with the robot, it queries the <strong>Gemini
+                        AI API</strong> to provide study assistance (math solving, quizzes, explanations) and translates
+                    the AI's emotional response into physical robot movements (e.g., dancing when excited, nodding when
+                    agreeing, looking down when shy).</li>
+            </ul>
+        </section>
+
+        <section class="page-break">
+            <h2>⚙️ 2. Hardware Bill of Materials (BOM)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Component</th>
+                        <th>Qty</th>
+                        <th>Recommended Spec</th>
+                        <th>Role</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td><strong>ESP32-C3 Super Mini</strong></td>
+                        <td>1</td>
+                        <td>RISC-V single-core, compact form factor</td>
+                        <td>Core microcontroller</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td><strong>N20 Micro Gear Motors</strong></td>
+                        <td>2</td>
+                        <td>6V or 12V, 200/300 RPM</td>
+                        <td>High-torque compact drive motors</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td><strong>N20 Matching Wheels</strong></td>
+                        <td>2</td>
+                        <td>Rubber grip wheels</td>
+                        <td>Wheels for movement</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td><strong>TB6612FNG Motor Driver</strong></td>
+                        <td>1</td>
+                        <td>Dual H-Bridge MOSFET driver</td>
+                        <td>Highly efficient, compact motor control</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td><strong>MG90S Servo Motor</strong></td>
+                        <td>1</td>
+                        <td>Metal Gear micro servo</td>
+                        <td>Controls phone vertical tilt (neck motion)</td>
+                    </tr>
+                    <tr>
+                        <td>6</td>
+                        <td><strong>18650 Li-ion Batteries</strong></td>
+                        <td>2</td>
+                        <td>3.7V standard cells (Series = 7.4V)</td>
+                        <td>Primary power supply</td>
+                    </tr>
+                    <tr>
+                        <td>7</td>
+                        <td><strong>18650 Battery Holder</strong></td>
+                        <td>1</td>
+                        <td>2-slot series holder</td>
+                        <td>Holds and connects batteries in series</td>
+                    </tr>
+                    <tr>
+                        <td>8</td>
+                        <td><strong>MP1584EN Buck Converter</strong></td>
+                        <td>1</td>
+                        <td>Adjustable step-down module</td>
+                        <td>Steps down 7.4V to exactly 5.0V for ESP32-C3</td>
+                    </tr>
+                    <tr>
+                        <td>9</td>
+                        <td><strong>VL53L0X ToF Sensor</strong></td>
+                        <td>1</td>
+                        <td>Laser rangefinder (I2C)</td>
+                        <td>Obstacle avoidance & gesture sensing</td>
+                    </tr>
+                    <tr>
+                        <td>10</td>
+                        <td><strong>TCRT5000 IR Modules</strong></td>
+                        <td>2</td>
+                        <td>Downward-facing sensors</td>
+                        <td>Cliff detection (prevents falling off table)</td>
+                    </tr>
+                    <tr>
+                        <td>11</td>
+                        <td><strong>Onboard WS2812 RGB LED</strong></td>
+                        <td>1</td>
+                        <td>Onboard addressable NeoPixel on GPIO 8</td>
+                        <td>Status & mood lighting indicator</td>
+                    </tr>
+                    <tr>
+                        <td>12</td>
+                        <td><strong>Chassis & MagSafe Ring</strong></td>
+                        <td>1</td>
+                        <td>3D printed body + magnetic ring</td>
+                        <td>Holds electronics and phone magnetically</td>
+                    </tr>
+                </tbody>
+        </section>
+
+        <section class="page-break">
+            <h2>⚙️ 3. Bottom Motor Mounting & Drive System (Mechanical Setup)</h2>
+            <p>To achieve a compact desktop size like the LOOI robot, the N20 micro gear motors are mounted horizontally
+                at the bottom of the 3D-printed chassis.</p>
+
+            <div class="img-container">
+                <img src="C:/Users/VRED/.gemini/antigravity-ide/brain/b04417d7-ca12-4385-954a-a68e174d2f48/robot_bottom_motor_mount_1781493039034.png"
+                    alt="Robot Bottom Motor Mount">
+                <div class="caption">Figure 1: Micro-level bottom layout showing the N20 motor brackets, wheel coupling,
+                    and front caster balance system.</div>
+            </div>
+
+            <h3>Mechanical Design Details:</h3>
+            <ul>
+                <li><strong>Dual-Drive System</strong>: The two N20 gear motors are mounted side-by-side on the left and
+                    right sides of the chassis bottom. They are clamped down using 3D-printed plastic mounting brackets
+                    (secured to the chassis with M3 screws).</li>
+                <li><strong>Caster Balance</strong>: A small metal ball caster wheel is mounted at the front-center of
+                    the chassis. This provides a 3-point contact system (two drive wheels + one caster), enabling the
+                    robot to spin in place on a desk with zero friction.</li>
+                <li><strong>Direct Drive Coupling</strong>: The output D-shafts of the N20 motors are slotted directly
+                    into the center hub of the rubber wheels, eliminating gears or belts in the drive train.</li>
+            </ul>
+        </section>
+
+        <section class="page-break">
+            <h2>🔌 4. Hardware Wiring & Pinout Guide</h2>
+
+            <div class="img-container">
+                <img src="C:/Users/VRED/.gemini/antigravity-ide/brain/b04417d7-ca12-4385-954a-a68e174d2f48/robot_wiring_schematic_1781491466473.png"
+                    alt="LIK DIY Robot Wiring Diagram">
+                <div class="caption">Figure 2: Wiring routing logic. Note: Use this diagram for electrical routing logic (battery -> buck converter -> MCU, and battery -> motor driver -> motors). The specific pinout mapping for the ESP32-C3 Super Mini and TB6612FNG driver should follow the Pinout Connections Table below.</div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>From (Source)</th>
+                        <th>To (Destination)</th>
+                        <th>Wire Color</th>
+                        <th>Purpose / Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Battery Holder (+)</strong></td>
+                        <td>Buck Converter **IN(+)**</td>
+                        <td>Red</td>
+                        <td>Input battery power (7.4V - 8.4V)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Battery Holder (-)</strong></td>
+                        <td>Buck Converter **IN(-)**</td>
+                        <td>Black</td>
+                        <td>Input battery ground</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Buck Converter OUT(+)</strong></td>
+                        <td>ESP32-C3 **5V** pin</td>
+                        <td>Red</td>
+                        <td>Power up ESP32-C3 safely with stable **5.0V**</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Buck Converter OUT(-)</strong></td>
+                        <td>ESP32-C3 **GND** pin</td>
+                        <td>Black</td>
+                        <td>Common ground connection</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Battery Holder (+)</strong></td>
+                        <td>TB6612FNG **VM** pin</td>
+                        <td>Red</td>
+                        <td>Raw battery positive (high power line for N20 motors)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Battery Holder (-)</strong></td>
+                        <td>TB6612FNG **GND** pin</td>
+                        <td>Black</td>
+                        <td>Common ground</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 3V3</strong></td>
+                        <td>TB6612FNG **VCC** pin</td>
+                        <td>Red</td>
+                        <td>Logic power supply (3.3V) for driver</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 3V3</strong></td>
+                        <td>TB6612FNG **STBY** pin</td>
+                        <td>Yellow</td>
+                        <td>Standby control pin (tied HIGH to stay active)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 4</strong></td>
+                        <td>TB6612FNG **AIN1**</td>
+                        <td>Yellow</td>
+                        <td>Left Motor (Motor A) direction 1</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 5</strong></td>
+                        <td>TB6612FNG **AIN2**</td>
+                        <td>Orange</td>
+                        <td>Left Motor (Motor A) direction 2</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 6</strong></td>
+                        <td>TB6612FNG **PWMA**</td>
+                        <td>Yellow</td>
+                        <td>Left Motor (Motor A) speed control (PWM)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 7</strong></td>
+                        <td>TB6612FNG **BIN1**</td>
+                        <td>Blue</td>
+                        <td>Right Motor (Motor B) direction 1</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 10</strong></td>
+                        <td>TB6612FNG **BIN2**</td>
+                        <td>Green</td>
+                        <td>Right Motor (Motor B) direction 2</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 20</strong></td>
+                        <td>TB6612FNG **PWMB**</td>
+                        <td>Blue</td>
+                        <td>Right Motor (Motor B) speed control (PWM)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>TB6612FNG AO1 / AO2</strong></td>
+                        <td>Motor A (Left) terminals</td>
+                        <td>Red / Black</td>
+                        <td>Power to Left Motor</td>
+                    </tr>
+                    <tr>
+                        <td><strong>TB6612FNG BO1 / BO2</strong></td>
+                        <td>Motor B (Right) terminals</td>
+                        <td>Red / Black</td>
+                        <td>Power to Right Motor</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 3</strong></td>
+                        <td>MG90S **Signal** (Orange)</td>
+                        <td>Orange</td>
+                        <td>Servo neck tilt control signal (PWM)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Buck Converter OUT(+)</strong></td>
+                        <td>MG90S **VCC** (Red)</td>
+                        <td>Red</td>
+                        <td>Power to servo (5V)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Buck Converter OUT(-)</strong></td>
+                        <td>MG90S **GND** (Brown)</td>
+                        <td>Black</td>
+                        <td>Ground for servo</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 0</strong></td>
+                        <td>Battery Voltage Divider</td>
+                        <td>Yellow</td>
+                        <td>Battery monitoring ADC input (ADC1_CH0)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 1</strong></td>
+                        <td>Left TCRT5000 DO</td>
+                        <td>Green</td>
+                        <td>Left cliff sensor digital input</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GPIO 2</strong></td>
+                        <td>Right TCRT5000 DO</td>
+                        <td>Orange</td>
+                        <td>Right cliff sensor digital input</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 3V3</strong></td>
+                        <td>TCRT5000 **VCC**</td>
+                        <td>Red</td>
+                        <td>Power to cliff sensors (3.3V)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ESP32-C3 GND</strong></td>
+                        <td>TCRT5000 **GND**</td>
+                        <td>Black</td>
+                        <td>Ground for cliff sensors</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="alert">
+                <div class="alert-title">⚠️ Critical Board Safety Step:</div>
+                <ol>
+                    <li>Connect the battery pack to the Buck Converter IN(+) and IN(-) pins.</li>
+                    <li><strong>Do NOT connect the Buck Converter OUT pins to the ESP32-C3 yet.</strong></li>
+                    <li>Turn on the battery power.</li>
+                    <li>Take a multimeter, set it to DC Voltage mode, and measure the voltage at the Buck Converter
+                        OUT(+) and OUT(-) pins.</li>
+                    <li>Use a small screwdriver to turn the brass screw on the blue buck converter until the multimeter
+                        reads <strong>exactly 5.0V</strong>.</li>
+                    <li>Once adjusted, turn off the battery power, connect the output to the ESP32-C3 **5V** and **GND** pins, and you are 100%
+                        safe!</li>
+                </ol>
+            </div>
+        </section>
+
+        <section class="page-break">
+            <h2>📱 5. Smartphone Tilt & Mounting Mechanism (Mechanical Setup)</h2>
+            <p>To give the robot lifelike emotions and adapt its viewing angle to the user's eye level, LIK
+                incorporates a motorized neck tilt mechanism. This enables the phone to tilt up and down (pitch axis
+                control) dynamically.</p>
+
+            <div class="img-container">
+                <img src="C:/Users/VRED/.gemini/antigravity-ide/brain/b04417d7-ca12-4385-954a-a68e174d2f48/robot_neck_tilt_mechanism_1781492757239.png"
+                    alt="Robot Neck Tilt Mechanism">
+                <div class="caption">Figure 3: Micro-level mechanical assembly of the smartphone magnetic holder and
+                    MG90S servo tilt pivot.</div>
+            </div>
+
+            <h3>How the Mechanical System Works:</h3>
+            <ul>
+                <li><strong>Actuation</strong>: An MG90S Metal Gear Micro Servo is press-fitted into the neck slot of
+                    the 3D-printed body. The output gear (shaft) of the servo is directly coupled to the pivot arm of
+                    the phone mount bracket.</li>
+                <li><strong>The Phone Holder Bracket</strong>: The bracket is 3D-printed with a standard servo horn
+                    insertion slot on one side, allowing it to lock tightly onto the servo gear. The other end of the
+                    bracket features a flat face to stick a MagSafe-compatible magnetic ring.</li>
+                <li><strong>Magnetic Docking (MagSafe Ring)</strong>: A high-strength magnetic ring sticker is applied
+                    to the front of the bracket. The phone (with MagSafe case or magnetic sticker) snaps directly onto
+                    this ring. This provides a clean, clamp-free look exactly like the real LOOI robot, and holds the
+                    phone firmly even during sudden driving movements.</li>
+                <li><strong>Degrees of Motion</strong>: The servo can sweep from 0° (fully down) to 180° (fully up). For
+                    natural interactions, the software limits the range from <strong>-15° (tilted down)</strong> to
+                    <strong>+30° (tilted up)</strong>.</li>
+            </ul>
+        </section>
+
+        <section class="page-break">
+            <h2>📡 6. Software & Connection Architecture</h2>
+            <p>The system coordinates between three distinct software layers:</p>
+
+            <div class="flowchart">
+                [Phone Front-end (App.js/Face.js)]
+                ▲ (Real-time WebSockets / ws://192.168.4.1)
+                ▼
+                [ESP32-C3 Firmware (lik_firmware.ino)] ◄──► [TB6612FNG Motor Driver & MG90S Servo]
+                ▲ (HTTP API / JSON Format)
+                ▼
+                [Node.js Local Server (Server.js)] ◄──► [Gemini AI API / LLM Engine]</div>
+
+            <h3>Protocol Frame Specification (8-Bytes Binary)</h3>
+            <p>Commands are packaged as raw binary packets to optimize transmission speed and eliminate lag:</p>
+            <ul>
+                <li><strong>Byte 0 (SEQ)</strong>: Sequence number rolling counter to drop duplicate packets.</li>
+                <li><strong>Byte 1 (CMD)</strong>: Movement, LED, or animation commands.</li>
+                <li><strong>Byte 2 (PARAM1)</strong>: Command parameters like LED Red channel value.</li>
+                <li><strong>Byte 3 (PARAM2)</strong>: Command parameters like LED Green channel value.</li>
+                <li><strong>Byte 4 (VALUE)</strong>: Speed multiplier 0-100 or magnitude.</li>
+                <li><strong>Byte 5 (DURATION)</strong>: Units of 10ms for timed actions.</li>
+                <li><strong>Byte 6 (FLAGS)</strong>: Flags like Blue channel value for LEDs.</li>
+                <li><strong>Byte 7 (CRC)</strong>: XOR checksum of bytes 0-6 to detect corruption.</li>
+            </ul>
+        </section>
+
+        <section class="page-break">
+            <h2>👩‍🏫 7. Project Presentation & Demonstration Guide</h2>
+            <p>When presenting the project to your teacher (<strong>Mam</strong>), walk through the following script to
+                demonstrate technical depth and score maximum marks:</p>
+
+            <ol>
+                <li><strong>Step 1: Introduction (The Pitch)</strong>:
+                    <p>Explain: LIK is an AI-powered desktop robot designed to help students study. By using the
+                        smartphone as the head and an ESP32 as the body, we create a highly advanced robot while cutting
+                        manufacturing costs by 80%.</p>
+                </li>
+                <li><strong>Step 2: Live Demonstration of AI & Expressions</strong>:
+                    <p>Demo: Open the web page on the phone and talk to LIK. Ask a study question like, <em>"What is
+                            photosynthesis?"</em> or <em>"Help me solve 5x + 3 = 18."</em></p>
+                    <p>Observe: Show the teacher how LIK's eyes change to a <code>thinking</code> state. When the AI
+                        replies, the face changes mood to <code>eureka</code> or <code>happy</code>, and the
+                        text-to-speech reads the answer out loud.</p>
+                </li>
+                <li><strong>Step 3: Face Tracking & Motion Demonstration</strong>:
+                    <p>Demo: Stand in front of the phone camera. Move slowly to the left and right.</p>
+                    <p>Observe: The phone camera will detect your face movement and send turn commands to the ESP32. The
+                        robot's motors will rotate, keeping the robot focused on you.</p>
+                </li>
+                <li><strong>Step 4: Safety & Table Cliff Avoidance Test</strong>:
+                    <p>Demo: Place the robot on a table and drive it forward towards the edge.</p>
+                    <p>Observe: As the robot approaches the edge, the downward-pointing TCRT5000 cliff sensors will
+                        detect the lack of surface, override the current command, stop the motors immediately, and flash
+                        a warning LED, preventing it from falling off.</p>
+                </li>
+                <li><strong>Step 5: Study Tools Utility</strong>:
+                    <p>Demo: Show the other tabs in the app: Pomodoro Timer (face turns to <code>focused</code> mode)
+                        and the interactive Quiz Generator.</p>
+                </li>
+            </ol>
+        </section>
+
+        <section class="page-break">
+            <h2>🛠️ 8. Troubleshooting Diagnostics</h2>
+            <ul>
+                <li><strong>ESP32-C3 Serial Upload Fails or Board Unresponsive</strong>:
+                    <p><em>Cause</em>: The board might not be in programming mode or strapping pins are interference.</p>
+                    <p><em>Fix</em>: Manually put the board in bootloader mode:
+                        <ol>
+                            <li>Press and hold the <strong>BOOT</strong> button on the ESP32-C3 Super Mini.</li>
+                            <li>Press the <strong>RESET</strong> button once.</li>
+                            <li>Release the <strong>BOOT</strong> button.</li>
+                            <li>Attempt to upload the firmware again in PlatformIO.</li>
+                        </ol>
+                    </p>
+                </li>
+                <li><strong>No Serial Monitor Output</strong>:
+                    <p><em>Cause</em>: The ESP32-C3 uses a native USB-CDC controller instead of a dedicated UART chip (like CP2102).</p>
+                    <p><em>Fix</em>: Verify that <code>-D ARDUINO_USB_CDC_ON_BOOT=1</code> and <code>-D ARDUINO_USB_MODE=1</code> are set in the <code>platformio.ini</code> file's <code>build_flags</code>. Ensure the correct COM port is selected.</p>
+                </li>
+                <li><strong>WebSockets Disconnect Frequently</strong>:
+                    <p><em>Cause</em>: Ping timeout or weak WiFi signal.</p>
+                    <p><em>Fix</em>: Ensure the phone and PC are close to the router, or connect directly to the ESP32's
+                        Access Point. Verify that the ping interval (3000ms) matches the timeout config in `config.h`.
+                    </p>
+                </li>
+            </ul>
+        </section>
+    </div>
+
+</body>
+
+</html>i>
+</ul>
+</section>
+</div>
+
+</body>
+
+</html>

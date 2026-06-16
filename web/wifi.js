@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════
- *  VILY WiFi Manager
+ *  LIK WiFi Manager
  *  WebSockets client wrapper for ESP32 WiFi communication
  * ═══════════════════════════════════════════════
  */
@@ -57,7 +57,7 @@ class WiFiManager {
     }
 
     /**
-     * Connect to VILY via WebSocket
+     * Connect to LIK via WebSocket
      */
     connect(ipAddress) {
         return new Promise((resolve, reject) => {
@@ -98,7 +98,7 @@ class WiFiManager {
                     if (typeof event.data === 'string') {
                         this.log(`Handshake response: ${event.data}`, 'success');
                         this.handshaked = true;
-                        if (this.onConnect) this.onConnect(event.data.split('|')[0] || 'VILY');
+                        if (this.onConnect) this.onConnect(event.data.split('|')[0] || 'LIK');
                     } else if (event.data instanceof ArrayBuffer) {
                         const data = new Uint8Array(event.data);
                         if (data.length === 1) {
@@ -247,7 +247,7 @@ class WiFiManager {
     }
 
     handleDisconnect() {
-        this.log('Disconnected from VILY', 'warning');
+        this.log('Disconnected from LIK', 'warning');
         this.cleanup();
         if (this.onDisconnect) this.onDisconnect();
     }

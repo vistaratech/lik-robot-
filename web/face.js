@@ -1,5 +1,5 @@
 /**
- * VILY Face Engine
+ * LIK Face Engine
  * Animated robot face with expressions, blinking, and mood system
  * Inspired by LOOI's biomimetic face display
  */
@@ -51,10 +51,10 @@ class RobotFace {
         this.speakingOffset = 0;
         this.thinkingTimer = 0;
         
-        // Colors (Replicating the real LOOI robot's giant cyan ovals and dark shadow)
+        // Colors (Replicating the real LOOI robot's giant yellow/gold ovals and deep orange shadow)
         this.colors = {
-            eyeColor: '#00f0ff',       // Glowing cyan
-            eyeShadow: '#0022ff',      // Offset royal blue outline shadow
+            eyeColor: '#ffd000',       // Glowing warm yellow
+            eyeShadow: '#ff6600',      // Offset deep orange shadow
             cheek: '#f77fbe',
             faceBase: '#000000',       // Pure black background to merge with screen bezel
         };
@@ -94,10 +94,23 @@ class RobotFace {
     
     // ─── Mood System ───
     
-    setMood(mood, lockDuration = 0) {
+    setMood(mood, lockDuration = 0, playSound = true) {
+        // If recording or transcribing, lock face expression to only allow curious (listening) and thinking (processing)
+        if (window.app && (window.app.isRecording || window.app.isTranscribing)) {
+            if (mood !== 'curious' && mood !== 'thinking') {
+                console.log(`[Face] Mood transition to '${mood}' blocked during voice interaction.`);
+                return;
+            }
+        }
+
         if (this.mood !== mood) {
-            if (typeof soundEngine !== 'undefined') {
-                soundEngine.playMoodSound(mood);
+            // Suppress playing mood sounds during voice interactions or continuous talk
+            if (playSound && typeof soundEngine !== 'undefined') {
+                if (window.app && (window.app.isRecording || window.app.isTranscribing || window.app.continuousTalk)) {
+                    console.log(`[Face] Mood sound for '${mood}' suppressed during active voice/continuous interaction.`);
+                } else {
+                    soundEngine.playMoodSound(mood);
+                }
             }
         }
         this.targetMood = mood;
@@ -147,16 +160,22 @@ class RobotFace {
             }
         }, 2500 + Math.random() * 2000);
         
-        // Random mood changes
+        // Random mood changes (less frequent, and disabled during active interactions)
         setInterval(() => {
             if (this.isSpeaking) return;
             if (Date.now() < this.moodLockedUntil) return;
             if (window.app && window.app.currentPage !== 'home') return;
             
+            // Do not allow random mood changes if active recording/listening or continuous conversation is in progress
+            if (window.app) {
+                if (window.app.isRecording || window.app.isTranscribing || window.app.continuousTalk) return;
+                if (window.app.lastInteractionTime && (Date.now() - window.app.lastInteractionTime < 45000)) return;
+            }
+            
             const moods = ['happy', 'curious', 'happy', 'excited', 'happy', 'love', 'happy', 'shy'];
             const rand = moods[Math.floor(Math.random() * moods.length)];
             this.setMood(rand);
-        }, 8000 + Math.random() * 6000);
+        }, 45000 + Math.random() * 30000);
         
         // Occasional bounce
         setInterval(() => {
