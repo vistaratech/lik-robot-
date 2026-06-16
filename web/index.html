@@ -134,23 +134,32 @@
 
                 <!-- ── Tab Content: Drive ── -->
                 <div class="drawer-tab-panel active" id="panel-drive">
-                    <!-- Centered D-Pad Controller -->
-                    <div class="dpad-container">
-                        <div class="dpad">
+                    <!-- Split RC Controller (Transmitter Layout) -->
+                    <div class="split-controls-container">
+                        <!-- Left Side: Throttle (Forward/Backward) -->
+                        <div class="throttle-stick">
                             <button class="dpad-btn up" id="rc-btn-up" title="Move Forward">
                                 <i data-lucide="chevron-up"></i>
                             </button>
-                            <button class="dpad-btn left" id="rc-btn-left" title="Turn Left">
-                                <i data-lucide="chevron-left"></i>
+                            <button class="dpad-btn down" id="rc-btn-down" title="Move Backward">
+                                <i data-lucide="chevron-down"></i>
                             </button>
+                        </div>
+                        
+                        <!-- Center: Stop Button -->
+                        <div class="center-stop-area">
                             <button class="dpad-btn center" id="rc-btn-stop" title="Stop">
                                 <i data-lucide="square"></i>
                             </button>
+                        </div>
+                        
+                        <!-- Right Side: Steering (Left/Right) -->
+                        <div class="steering-stick">
+                            <button class="dpad-btn left" id="rc-btn-left" title="Turn Left">
+                                <i data-lucide="chevron-left"></i>
+                            </button>
                             <button class="dpad-btn right" id="rc-btn-right" title="Turn Right">
                                 <i data-lucide="chevron-right"></i>
-                            </button>
-                            <button class="dpad-btn down" id="rc-btn-down" title="Move Backward">
-                                <i data-lucide="chevron-down"></i>
                             </button>
                         </div>
                     </div>
