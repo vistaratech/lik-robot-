@@ -266,7 +266,7 @@ class LikApp {
 
                 const playGreeting = () => {
                     if (typeof soundEngine !== 'undefined') {
-                        soundEngine.speak(text, null, true);
+                        soundEngine.speak(text);
                     }
                 };
 
@@ -2069,7 +2069,7 @@ class LikApp {
 
             // ── Prefetch TTS in parallel while rendering the chat bubble ──
             const voiceLang = localStorage.getItem('lik-voice-lang') || 'en-US';
-            const ttsPromise = isHomeVoice && typeof soundEngine !== 'undefined'
+            const ttsPromise = typeof soundEngine !== 'undefined'
                 ? soundEngine.prefetchTTS(data.reply, voiceLang)
                 : Promise.resolve(null);
 
@@ -2079,12 +2079,28 @@ class LikApp {
             botMsg.innerHTML = `
                 <div class="chat-msg-avatar">V</div>
                 <div class="chat-msg-content">
-                    <div class="chat-msg-bubble">${this.formatBotReply(data.reply)}</div>
+                    <div class="chat-msg-bubble"></div>
                     <span class="chat-msg-time">${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
                 </div>
             `;
             chatHistory.appendChild(botMsg);
             chatHistory.scrollTop = chatHistory.scrollHeight;
+
+            const bubbleEl = botMsg.querySelector('.chat-msg-bubble');
+            
+            // Word-by-word typing animation
+            const words = data.reply.split(' ');
+            let wordIndex = 0;
+            const typeInterval = setInterval(() => {
+                if (wordIndex < words.length) {
+                    const currentText = words.slice(0, wordIndex + 1).join(' ');
+                    bubbleEl.innerHTML = this.formatBotReply(currentText);
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                    wordIndex++;
+                } else {
+                    clearInterval(typeInterval);
+                }
+            }, 60); // 60ms per word for highly responsive, organic typing
 
             // Add to conversation history
             this.conversationHistory.push({ role: 'assistant', content: data.reply });
@@ -2128,14 +2144,31 @@ class LikApp {
             .replace(/\*\*(.*?)\*\*/g, '$1')
             .replace(/\*(.*?)\*/g, '$1');
             
-        subtitleEl.textContent = cleanText;
+        if (this.subtitleInterval) {
+            clearInterval(this.subtitleInterval);
+        }
+        
+        subtitleEl.textContent = '';
         subtitleEl.classList.add('show');
+        
+        const words = cleanText.split(' ');
+        let wordIndex = 0;
+        
+        this.subtitleInterval = setInterval(() => {
+            if (wordIndex < words.length) {
+                subtitleEl.textContent = words.slice(0, wordIndex + 1).join(' ');
+                wordIndex++;
+            } else {
+                clearInterval(this.subtitleInterval);
+                this.subtitleInterval = null;
+            }
+        }, 80); // 80ms per word represents a natural reading/speaking speed
         
         if (this.subtitleTimeout) {
             clearTimeout(this.subtitleTimeout);
         }
         
-        const displayTime = Math.max(3500, Math.min(8500, cleanText.length * 65));
+        const displayTime = Math.max(3500, Math.min(10000, cleanText.length * 65 + 1000));
         
         this.subtitleTimeout = setTimeout(() => {
             subtitleEl.classList.remove('show');

@@ -181,14 +181,6 @@ class RobotSoundEngine {
         if (this.useBrowserTTSOnly) {
             return null;
         }
-        // Enforce minimum 1.5s gap between TTS API calls (avoid Gemini 429 rate limit)
-        const now = Date.now();
-        const sinceLastCall = now - this._lastTTSCallTime;
-        if (sinceLastCall < 1500) {
-            const wait = 1500 - sinceLastCall;
-            console.log(`[Sound] TTS rate limit guard — waiting ${wait}ms`);
-            await new Promise(r => setTimeout(r, wait));
-        }
         this._lastTTSCallTime = Date.now();
 
         try {
@@ -263,7 +255,7 @@ class RobotSoundEngine {
      * 2. If key missing or fails, fall back to enhanced browser speechSynthesis
      * 3. Always fires onEndCallback when done
      */
-    async speak(text, onEndCallback, forceBrowserTTS = false) {
+    async speak(text, onEndCallback) {
         if (onEndCallback !== undefined && typeof onEndCallback !== 'function') {
             console.warn('[Sound] speak() called with invalid callback — ignoring');
             onEndCallback = undefined;
@@ -288,7 +280,7 @@ class RobotSoundEngine {
         const voiceLang = localStorage.getItem('lik-voice-lang') || 'en-US';
         this._lastTTSText = text; // Save for fallback use
 
-        if (this.useBrowserTTSOnly || forceBrowserTTS) {
+        if (this.useBrowserTTSOnly) {
             this._speakBrowser(text, voiceLang, onEndCallback);
             return;
         }

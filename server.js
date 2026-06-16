@@ -592,6 +592,22 @@ let lastGroqFailureTime = 0;
 let lastGeminiFailureTime = 0;
 let lastGoogleFailureTime = 0;
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 1500) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    } catch (err) {
+        clearTimeout(id);
+        throw err;
+    }
+}
+
 app.post('/api/tts', async (req, res) => {
     const { text, language = 'en-US' } = req.body;
     if (!text) return res.status(400).json({ error: 'text is required' });
@@ -623,7 +639,7 @@ app.post('/api/tts', async (req, res) => {
                 const ttsModel = 'gemini-2.5-flash-preview-tts';
                 const ttsVoice = 'Kore'; // Excellent for Tamil
 
-                const gemRes = await fetch(
+                const gemRes = await fetchWithTimeout(
                     `https://generativelanguage.googleapis.com/v1beta/models/${ttsModel}:generateContent?key=${geminiKey}`,
                     {
                         method: 'POST',
@@ -635,7 +651,8 @@ app.post('/api/tts', async (req, res) => {
                                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: ttsVoice } } }
                             }
                         })
-                    }
+                    },
+                    1500
                 );
 
                 if (gemRes.ok) {
@@ -661,19 +678,23 @@ app.post('/api/tts', async (req, res) => {
         const isGroqHealthy = (nowTime - lastGroqFailureTime) > TTS_CIRCUIT_BREAKER_MS;
         if (groqKey && groqKey !== 'YOUR_GROQ_API_KEY' && isGroqHealthy) {
             try {
-                const groqRes = await fetch('https://api.groq.com/openai/v1/audio/speech', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${groqKey}`
+                const groqRes = await fetchWithTimeout(
+                    'https://api.groq.com/openai/v1/audio/speech',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${groqKey}`
+                        },
+                        body: JSON.stringify({
+                            model: 'canopylabs/orpheus-v1-english',
+                            input: ttsText,
+                            voice: 'troy',
+                            response_format: 'mp3'
+                        })
                     },
-                    body: JSON.stringify({
-                        model: 'canopylabs/orpheus-v1-english',
-                        input: ttsText,
-                        voice: 'troy',
-                        response_format: 'mp3'
-                    })
-                });
+                    1500
+                );
 
                 if (groqRes.ok) {
                     const audioBuffer = await groqRes.arrayBuffer();
@@ -699,7 +720,7 @@ app.post('/api/tts', async (req, res) => {
                 const ttsModel = 'gemini-2.5-flash-preview-tts';
                 const ttsVoice = 'Kore';
 
-                const gemRes = await fetch(
+                const gemRes = await fetchWithTimeout(
                     `https://generativelanguage.googleapis.com/v1beta/models/${ttsModel}:generateContent?key=${geminiKey}`,
                     {
                         method: 'POST',
@@ -711,7 +732,8 @@ app.post('/api/tts', async (req, res) => {
                                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: ttsVoice } } }
                             }
                         })
-                    }
+                    },
+                    1500
                 );
 
                 if (gemRes.ok) {
@@ -760,11 +782,11 @@ app.post('/api/tts', async (req, res) => {
 async function getGoogleTranslateTTS(text, lang) {
     try {
         const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodeURIComponent(text)}`;
-        const res = await fetch(url, {
+        const res = await fetchWithTimeout(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
-        });
+        }, 1500);
         if (res.ok) {
             const buffer = await res.arrayBuffer();
             return {
