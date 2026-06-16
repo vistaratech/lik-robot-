@@ -90,6 +90,7 @@ class RobotFace {
         this.isBooting = true;
         this.bootPhase = 0;         // 0-1 progress of boot animation
         this.bootStarted = false;
+        this.onBootComplete = null;
         
         // ═══════ NEW: Dance Animation ═══════
         this.isDancing = false;
@@ -531,6 +532,9 @@ class RobotFace {
                 // Happy bounce on boot complete
                 this.bounceVel = -4;
                 console.log('[Face] ✨ Boot animation complete!');
+                if (typeof this.onBootComplete === 'function') {
+                    this.onBootComplete();
+                }
             }
         }
         

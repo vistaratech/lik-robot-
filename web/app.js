@@ -41,6 +41,7 @@ class LikApp {
         this.cameraFacingMode = localStorage.getItem('lik-camera-facing') || 'user';
         this.visionStream = null;
         this.isScanning = false;
+        this.isInitialBoot = true;
         
         this.init();
     }
@@ -249,6 +250,41 @@ class LikApp {
         
         // ═══════ LOOI Boot Animation — play wake-up sequence on startup ═══════
         this.face.playBootAnimation();
+        this.face.onBootComplete = () => {
+            if (this.isInitialBoot) {
+                this.isInitialBoot = false;
+                
+                const lang = localStorage.getItem('lik-voice-lang') || 'en-US';
+                const isTamil = lang.startsWith('ta');
+                const greeting = {
+                    en: "Hi, my name is Lik! How can I help you now?",
+                    ta: "ஹாய், என் பெயர் லைக்! நான் இப்போது உங்களுக்கு எவ்வாறு உதவ வேண்டும்?"
+                };
+                const text = isTamil ? greeting.ta : greeting.en;
+
+                this.showFaceSubtitle(text);
+
+                const playGreeting = () => {
+                    if (typeof soundEngine !== 'undefined') {
+                        soundEngine.speak(text);
+                    }
+                };
+
+                // If audio context is already unlocked, play immediately
+                if (typeof soundEngine !== 'undefined' && soundEngine.ctx && soundEngine.ctx.state === 'running') {
+                    playGreeting();
+                } else {
+                    // Otherwise, play on the first body click/interaction (e.g. click modal)
+                    const unlockHandler = () => {
+                        playGreeting();
+                        document.body.removeEventListener('click', unlockHandler);
+                        document.body.removeEventListener('touchstart', unlockHandler);
+                    };
+                    document.body.addEventListener('click', unlockHandler);
+                    document.body.addEventListener('touchstart', unlockHandler);
+                }
+            }
+        };
         const faceContainer = document.querySelector('.face-container');
         if (faceContainer) {
             faceContainer.classList.add('booting');

@@ -1,56 +1,6 @@
 {
   "memories": [
     {
-      "timestamp": "2026-06-16T02:22:11.828Z",
-      "user": "Dance please.",
-      "bot": "ஆமாம், நான் நடனமாட முடியும்!"
-    },
-    {
-      "timestamp": "2026-06-16T02:23:58.490Z",
-      "user": "Hey buddy, you can't get a Tamil person.",
-      "bot": "நான் தமிழ் மக்களைப் புரிந்து கொள்ள முயற்சி செய்கிறேன், நண்பா!"
-    },
-    {
-      "timestamp": "2026-06-16T02:24:13.102Z",
-      "user": "I can dance.",
-      "bot": "நீங்களும் நடனமாட முடியும்! என்னாலும் நடனமாட முடியும்!"
-    },
-    {
-      "timestamp": "2026-06-16T02:31:35.220Z",
-      "user": "Yeah, I'm not going to.",
-      "bot": "ஒரு நாள் நீங்கள் நடனமாடுவீர்கள், நண்பா!"
-    },
-    {
-      "timestamp": "2026-06-16T02:44:04.365Z",
-      "user": "Wow, the people are living in the world.",
-      "bot": "That's a great observation! The world is indeed home to many diverse people and cultures. What would you like to know about them?"
-    },
-    {
-      "timestamp": "2026-06-16T02:44:28.713Z",
-      "user": "Now, 5 plus 6.",
-      "bot": "5 + 6 = 11"
-    },
-    {
-      "timestamp": "2026-06-16T02:44:39.914Z",
-      "user": "500 plus 600.",
-      "bot": "500 + 600 = 1100"
-    },
-    {
-      "timestamp": "2026-06-16T02:44:53.320Z",
-      "user": "I'm saying Tamil.",
-      "bot": "நானும் உங்களுக்குத் தெளிவாக சொல்ல வேண்டும்!"
-    },
-    {
-      "timestamp": "2026-06-16T02:45:03.964Z",
-      "user": "I know rup less I am",
-      "bot": "Rupert or less I am, ரூபர்ட் அல்லது குறைவாக நான்"
-    },
-    {
-      "timestamp": "2026-06-16T02:45:30.787Z",
-      "user": "Give me a motivational message to help me study!",
-      "bot": "You've got this! Believe in yourself and your abilities. Every small step you take towards your goal will bring you closer to success. Keep pushing forward, stay focused, and remember why you started. You're doing great!"
-    },
-    {
       "timestamp": "2026-06-16T02:45:50.245Z",
       "user": "I'm going to say something.",
       "bot": "நண்பா, ஏன் சொல்லு!"
@@ -99,6 +49,56 @@
       "timestamp": "2026-06-16T03:27:31.468Z",
       "user": "morning",
       "bot": "Good morning! Have a great day!"
+    },
+    {
+      "timestamp": "2026-06-16T04:46:07.658Z",
+      "user": "Can you speak to the Thamel?",
+      "bot": "I can speak to you, and we can chat about Thamel, a popular tourist destination in Kathmandu, Nepal!"
+    },
+    {
+      "timestamp": "2026-06-16T04:46:30.399Z",
+      "user": "What is different between software and hardware?",
+      "bot": "Software refers to the programs and operating systems that run on a computer, while hardware refers to the physical components of the computer itself, such as the keyboard, mouse, and processor."
+    },
+    {
+      "timestamp": "2026-06-16T04:46:59.115Z",
+      "user": "2 plus 7",
+      "bot": "2 + 7 = 9"
+    },
+    {
+      "timestamp": "2026-06-16T04:47:12.295Z",
+      "user": "572 plus 578",
+      "bot": "572 + 578 = 1150"
+    },
+    {
+      "timestamp": "2026-06-16T04:47:29.883Z",
+      "user": "3700 multiple 528",
+      "bot": "3700 * 528 = 1,953,600"
+    },
+    {
+      "timestamp": "2026-06-16T04:49:42.179Z",
+      "user": "Like dance",
+      "bot": "Let's dance and have some fun!"
+    },
+    {
+      "timestamp": "2026-06-16T06:10:20.130Z",
+      "user": "Tell them any story?",
+      "bot": "ஒரு காட்டில், ஒரு சிறிய எலி வாழ்ந்து வந்தது. அதன் பெயர் மோசை. ஒருநாள், அந்த எலி, மிகப்பெரிய காட்டுப்பகுதியில் இருந்து ஒரு வித்தையை எடுத்து வந்தது. அந்த வித்தை நட்டு, நன்றாக பாதுகாத்து, அது பெரிய மரமாக வளர்ந்தது. மோசை அந்த மரத்தின் நிழலில் அமைதியாக வாழ்ந்தது. அந்த கதை நமக்கு சொல்கிறது, சிறிய முயற்சிகள் பெரிய விளைவுகளை ஏற்படுத்தும்."
+    },
+    {
+      "timestamp": "2026-06-16T06:10:46.470Z",
+      "user": "Tell them any story?",
+      "bot": "ஒரு காட்டில், ஒரு சிறிய எலி வாழ்ந்து வந்தது. அதன் பெயர் மோசை. ஒருநாள், அந்த எலி, மிகப்பெரிய காட்டுப்பகுதியில் இருந்து ஒரு வித்தையை எடுத்து வந்தது. அந்த வித்தை நட்டு, நன்றாக பாதுகாத்து, அது பெரிய மரமாக வளர்ந்தது. மோசை அந்த மரத்தின் நிழலில் அமைதியாக வாழ்ந்தது. அந்த கதை நமக்கு சொல்கிறது, சிறிய முயற்சிகள் பெரிய விளைவுகளை ஏற்படுத்தும்."
+    },
+    {
+      "timestamp": "2026-06-16T06:12:22.417Z",
+      "user": "what is exactly this",
+      "bot": "ஒன்று சொல்லு, நண்பா! நீ எதைப்பற்றி சொல்கிறாய்?"
+    },
+    {
+      "timestamp": "2026-06-16T06:12:38.573Z",
+      "user": "I'm going to get to the end of the day.",
+      "bot": "You're moving on to the end of the day! What's the plan for the rest of the day?"
     }
   ],
   "settings": {}
