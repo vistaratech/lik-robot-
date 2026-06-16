@@ -3,22 +3,21 @@
     "name": "mobile",
     "slug": "mobile",
     "version": "1.0.0",
-    "orientation": "default",
+    "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
-      "infoPlist": {
-        "NSCameraUsageDescription": "LIK needs access to the camera for object recognition scanning.",
-        "NSMicrophoneUsageDescription": "LIK needs access to the microphone for listening to voice commands."
-      }
+      "supportsTablet": true
     },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow LIK to access your camera for visual interaction."
+        }
+      ]
+    ],
     "android": {
-      "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO",
-        "MODIFY_AUDIO_SETTINGS"
-      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

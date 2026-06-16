@@ -1,31 +1,31 @@
 /*
  * ╔══════════════════════════════════════════════════════════════╗
  * ║                   LIK Firmware v2.0                        ║
- * ║         ESP32 WiFi Robot — Inspired by LOOI Robot           ║
+ * ║         ESP32 BLE Robot — Inspired by LOOI Robot           ║
  * ╚══════════════════════════════════════════════════════════════╝
  * 
- * Custom WebSockets server for controlling a phone-mounted robot.
+ * Custom BLE GATT server for controlling a phone-mounted robot.
  * Features:
- *   - WiFi connection with automatic Access Point fallback
- *   - WebSocket server on port 80 for low-latency browser control
+ *   - BLE connection with handshake authentication
  *   - Dual DC motor control via L298N driver
- *   - RGB LED control
+ *   - RGB LED control (NeoPixel status LED)
  *   - Battery voltage monitoring
  *   - Pre-programmed movement animations
  *   - Sequence-based command protocol (LOOI-inspired)
  * 
  * Hardware:
- *   - ESP32 DevKit V1
- *   - L298N Motor Driver
+ *   - ESP32 DevKit V1 / ESP32-C3 Super Mini
+ *   - L298N / TB6612FNG Motor Driver
  *   - 2x DC Motors
- *   - RGB LED (common cathode)
+ *   - Onboard WS2812 NeoPixel Status LED
  *   - Voltage divider on battery line
  */
 
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <mbedtls/sha1.h>
-#include <base64.h>
+#include <Arduino.h>
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 #include "config.h"
 
 #ifdef USE_NEOPIXEL
@@ -45,11 +45,16 @@ struct AnimKeyframe {
 //  Global State
 // ═══════════════════════════════════════════════
 
-// WiFi & WebSocket
-WiFiServer server(WEBSOCKET_PORT);
-WiFiClient wsClient;
+// BLE
+BLEServer*          pServer         = nullptr;
+BLECharacteristic*  pMotorCmdChar   = nullptr;
+BLECharacteristic*  pMotorStatusChar = nullptr;
+BLECharacteristic*  pLedControlChar = nullptr;
+BLECharacteristic*  pBatteryChar    = nullptr;
+BLECharacteristic*  pHandshakeChar  = nullptr;
 
-bool wsConnected        = false;
+bool deviceConnected    = false;
+bool oldDeviceConnected = false;
 bool handshakeComplete  = false;
 unsigned long connectTime    = 0;
 unsigned long lastPingTime   = 0;
@@ -78,6 +83,11 @@ unsigned long ledBlinkTime = 0;
 bool ledBlinkState     = false;
 uint8_t ledR = 0, ledG = 0, ledB = 0;
 
+// Forward Declarations
+void setLED(uint8_t r, uint8_t g, uint8_t b);
+void stopMotors();
+void processCommand(uint8_t* data, size_t length);
+
 void toggleOnboardLED(bool state) {
     #ifdef USE_NEOPIXEL
     if (state) {
@@ -91,163 +101,46 @@ void toggleOnboardLED(bool state) {
     #endif
 }
 
-// Forward Declarations
-void setLED(uint8_t r, uint8_t g, uint8_t b);
-void stopMotors();
-void processCommand(uint8_t* data, size_t length);
-
 // ═══════════════════════════════════════════════
-//  WebSocket Framing Functions
+//  BLE Server Callbacks
 // ═══════════════════════════════════════════════
 
-void sendWebSocketFrame(const uint8_t* payload, size_t length, uint8_t opcode = 0x02) {
-    if (!wsConnected || !wsClient.connected()) return;
-    
-    wsClient.write(0x80 | opcode); // Fin bit set + opcode
-    
-    if (length <= 125) {
-        wsClient.write((uint8_t)length);
-    } else if (length <= 65535) {
-        wsClient.write(126);
-        uint16_t len16 = __builtin_bswap16((uint16_t)length);
-        wsClient.write((const uint8_t*)&len16, 2);
-    } else {
-        wsClient.write(127);
-        uint64_t len64 = __builtin_bswap64((uint64_t)length);
-        wsClient.write((const uint8_t*)&len64, 8);
-    }
-    
-    if (length > 0 && payload != nullptr) {
-        wsClient.write(payload, length);
-    }
-}
-
-bool performWebSocketHandshake(WiFiClient& client) {
-    String secKey = "";
-    
-    // Read HTTP request headers
-    unsigned long timeout = millis();
-    Serial.println("[WS] Handshake request headers:");
-    while (client.connected() && millis() - timeout < 2000) {
-        if (client.available()) {
-            String line = client.readStringUntil('\n');
-            line.trim();
-            Serial.println("  " + line);
-            if (line.length() == 0) {
-                // Empty line indicates end of headers
-                break;
-            }
-            
-            String lineLower = line;
-            lineLower.toLowerCase();
-            if (lineLower.startsWith("sec-websocket-key:")) {
-                secKey = line.substring(18);
-                secKey.trim();
-            }
-        }
-    }
-    
-    if (secKey.length() == 0) {
-        Serial.println("[WS] Error: Sec-WebSocket-Key not found!");
-        client.println("HTTP/1.1 400 Bad Request");
-        client.println("Connection: close");
-        client.println();
-        return false;
-    }
-    
-    // Calculate Accept Key
-    String concat = secKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    uint8_t sha1Result[20];
-    
-    mbedtls_sha1_context ctx;
-    mbedtls_sha1_init(&ctx);
-    mbedtls_sha1_starts(&ctx);
-    mbedtls_sha1_update(&ctx, (const unsigned char*)concat.c_str(), concat.length());
-    mbedtls_sha1_finish(&ctx, sha1Result);
-    mbedtls_sha1_free(&ctx);
-    
-    String acceptKey = base64::encode(sha1Result, 20);
-    acceptKey.trim();
-    
-    // Send Switching Protocols response
-    client.println("HTTP/1.1 101 Switching Protocols");
-    client.println("Upgrade: websocket");
-    client.println("Connection: Upgrade");
-    client.print("Sec-WebSocket-Accept: ");
-    client.println(acceptKey);
-    client.println();
-    
-    return true;
-}
-
-void handleWebSocketClient(WiFiClient& client) {
-    if (!client.available()) return;
-    
-    uint8_t header1 = client.read();
-    uint8_t header2 = client.read();
-    
-    uint8_t opcode = header1 & 0x0F;
-    bool isMasked = (header2 & 0x80) != 0;
-    uint32_t payloadLen = header2 & 0x7F;
-    
-    if (payloadLen == 126) {
-        uint8_t extraLenBytes[2];
-        client.readBytes(extraLenBytes, 2);
-        payloadLen = (extraLenBytes[0] << 8) | extraLenBytes[1];
-    } else if (payloadLen == 127) {
-        uint8_t extraLenBytes[8];
-        client.readBytes(extraLenBytes, 8);
-        payloadLen = 0;
-        for (int i = 0; i < 8; i++) {
-            payloadLen = (payloadLen << 8) | extraLenBytes[i];
-        }
-    }
-    
-    uint8_t maskKey[4];
-    if (isMasked) {
-        client.readBytes(maskKey, 4);
-    }
-    
-    // Safety check: reject oversized payloads to prevent heap crash
-    if (payloadLen > 1024) {
-        Serial.printf("[WS] Payload too large: %d, dropping\n", payloadLen);
-        while (payloadLen-- > 0 && client.available()) client.read();
-        return;
-    }
-    uint8_t* payload = new uint8_t[payloadLen];
-    if (!payload) {
-        Serial.println("[WS] Memory allocation failed!");
-        return;
-    }
-    client.readBytes(payload, payloadLen);
-    
-    if (isMasked) {
-        for (uint32_t i = 0; i < payloadLen; i++) {
-            payload[i] ^= maskKey[i % 4];
-        }
-    }
-    
-    // Handle Opcode
-    if (opcode == 0x08) { // Connection Close
-        Serial.println("[WS] Connection close received");
-        sendWebSocketFrame(payload, payloadLen, 0x08); // Echo close frame per RFC 6455
-        delay(100);
-        client.stop();
-        wsConnected = false;
+class VilyServerCallbacks : public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) override {
+        deviceConnected = true;
         handshakeComplete = false;
-    } else if (opcode == 0x09) { // Ping
-        // Send Pong with echoed payload per RFC 6455
-        sendWebSocketFrame(payload, payloadLen, 0x0A);
-    } else if (opcode == 0x02 || opcode == 0x01) { // Binary or Text
-        if (payloadLen == COMMAND_PACKET_SIZE) {
-            processCommand(payload, payloadLen);
-        } else {
-            Serial.printf("[WS] Invalid packet size: %d\n", payloadLen);
+        connectTime = millis();
+        lastPingTime = millis();
+        firstPacket = true;
+        
+        Serial.println("[BLE] Device connected — waiting for handshake...");
+        
+        // Blink LED to indicate connection
+        for (int i = 0; i < 3; i++) {
+            toggleOnboardLED(true);
+            delay(100);
+            toggleOnboardLED(false);
+            delay(100);
         }
     }
-    
-    delete[] payload;
-}
+
+    void onDisconnect(BLEServer* pServer) override {
+        deviceConnected = false;
+        handshakeComplete = false;
+        
+        // Stop all motors on disconnect
+        stopMotors();
+        setLED(0, 0, 0);
+        animPlaying = false;
+        
+        Serial.println("[BLE] Device disconnected — motors stopped");
+        
+        // Restart advertising
+        delay(500);
+        pServer->startAdvertising();
+        Serial.println("[BLE] Advertising restarted");
+    }
+};
 
 // ═══════════════════════════════════════════════
 //  Motor Control Functions
@@ -399,14 +292,7 @@ void updateLEDBlink() {
         if (ledBlinkState) {
             setLED(ledR, ledG, ledB);
         } else {
-            #ifdef USE_NEOPIXEL
-            pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-            pixels.show();
-            #else
-            ledcWrite(LED_PWM_CH_R, 0);
-            ledcWrite(LED_PWM_CH_G, 0);
-            ledcWrite(LED_PWM_CH_B_CH, 0);
-            #endif
+            setLED(0, 0, 0);
         }
         
         if (ledBlinkCount > 0) {
@@ -446,13 +332,16 @@ void updateBattery() {
     
     uint8_t percent = readBatteryPercent();
     
-    if (wsConnected && handshakeComplete) {
+    if (deviceConnected && handshakeComplete) {
         uint8_t data[1] = { percent };
-        sendWebSocketFrame(data, 1, 0x02); // 1-byte binary frame for battery
+        pBatteryChar->setValue(data, 1);
+        pBatteryChar->notify();
     }
 }
 
-
+// ═══════════════════════════════════════════════
+//  Animation Engine
+// ═══════════════════════════════════════════════
 
 // SHAKE animation — quick back-and-forth
 const AnimKeyframe ANIM_SHAKE_FRAMES[] = {
@@ -579,7 +468,7 @@ uint8_t calculateCRC(uint8_t* data, int len) {
 }
 
 void sendStatus(uint8_t statusCode) {
-    if (!wsConnected) return;
+    if (!deviceConnected) return;
     
     uint8_t status[4] = {
         statusCode,
@@ -587,7 +476,8 @@ void sendStatus(uint8_t statusCode) {
         (uint8_t)motorASpeed,
         (uint8_t)motorBSpeed
     };
-    sendWebSocketFrame(status, 4, 0x02); // 4-byte binary status frame
+    pMotorStatusChar->setValue(status, 4);
+    pMotorStatusChar->notify();
 }
 
 void processCommand(uint8_t* data, size_t length) {
@@ -628,7 +518,7 @@ void processCommand(uint8_t* data, size_t length) {
         lastPingTime = millis();
         
         String info = String(DEVICE_NAME) + "|" + String(DEVICE_VERSION);
-        sendWebSocketFrame((const uint8_t*)info.c_str(), info.length(), 0x01); // String text response
+        pHandshakeChar->setValue(info.c_str());
         
         Serial.println("[CMD] Handshake complete!");
         toggleOnboardLED(true);  // Solid LED indicates handshake complete
@@ -723,58 +613,118 @@ void processCommand(uint8_t* data, size_t length) {
 }
 
 // ═══════════════════════════════════════════════
-//  WiFi Setup
+//  BLE Characteristic Callbacks
 // ═══════════════════════════════════════════════
 
-void setupWiFi() {
-    Serial.println("[WIFI] Initializing...");
-    
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    
-    Serial.print("[WIFI] Connecting to Station ");
-    Serial.print(WIFI_SSID);
-    
-    unsigned long startAttemptTime = millis();
-    bool connected = false;
-    
-    while (millis() - startAttemptTime < 10000) {
-        if (WiFi.status() == WL_CONNECTED) {
-            connected = true;
-            break;
+class MotorCmdCallback : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pChar) override {
+        std::string rxValue = pChar->getValue();
+        if (rxValue.length() > 0) {
+            Serial.printf("[BLE] Received %d bytes: ", rxValue.length());
+            for (int i = 0; i < rxValue.length(); i++) {
+                Serial.printf("%02X ", (uint8_t)rxValue[i]);
+            }
+            Serial.println();
+            
+            processCommand((uint8_t*)rxValue.data(), rxValue.length());
         }
-        delay(500);
-        Serial.print(".");
-        static bool tempState = false;
-        tempState = !tempState;
-        toggleOnboardLED(tempState);
     }
-    Serial.println();
-    
-    if (connected) {
-        Serial.print("[WIFI] Connected! IP Address: ");
-        Serial.println(WiFi.localIP());
-        
-        if (MDNS.begin(MDNS_HOSTNAME)) {
-            Serial.printf("[WIFI] mDNS responder started: http://%s.local\n", MDNS_HOSTNAME);
-            MDNS.addService("ws", "tcp", WEBSOCKET_PORT);
-        } else {
-            Serial.println("[WIFI] Error setting up mDNS!");
+};
+
+class LedControlCallback : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pChar) override {
+        std::string rxValue = pChar->getValue();
+        if (rxValue.length() >= 3) {
+            // Direct LED control: [R, G, B]
+            ledBlinking = false;
+            setLED((uint8_t)rxValue[0], (uint8_t)rxValue[1], (uint8_t)rxValue[2]);
+            Serial.printf("[LED] Direct set RGB(%d, %d, %d)\n", 
+                          (uint8_t)rxValue[0], (uint8_t)rxValue[1], (uint8_t)rxValue[2]);
         }
-    } else {
-        Serial.println("[WIFI] Connection failed. Switching to AP mode...");
-        
-        WiFi.mode(WIFI_AP);
-        WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASSWORD);
-        
-        Serial.print("[WIFI] Access Point started. SSID: ");
-        Serial.println(WIFI_AP_SSID);
-        Serial.print("[WIFI] AP IP Address: ");
-        Serial.println(WiFi.softAPIP());
     }
+};
+
+class HandshakeCallback : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pChar) override {
+        std::string rxValue = pChar->getValue();
+        if (rxValue.length() > 0) {
+            // Accept any write as handshake attempt
+            handshakeComplete = true;
+            lastPingTime = millis();
+            
+            String info = String(DEVICE_NAME) + "|" + String(DEVICE_VERSION);
+            pHandshakeChar->setValue(info.c_str());
+            
+            Serial.println("[BLE] Handshake via characteristic write!");
+            toggleOnboardLED(true);
+        }
+    }
+};
+
+// ═══════════════════════════════════════════════
+//  BLE Setup
+// ═══════════════════════════════════════════════
+
+void setupBLE() {
+    Serial.println("[BLE] Initializing...");
     
-    server.begin();
-    Serial.printf("[WIFI] WebSocket Server started on port %d\n", WEBSOCKET_PORT);
+    // Initialize BLE device
+    BLEDevice::init(DEVICE_NAME);
+    
+    // Create server
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new VilyServerCallbacks());
+    
+    // Create service
+    BLEService* pService = pServer->createService(SERVICE_UUID);
+    
+    // Motor Command characteristic (Write)
+    pMotorCmdChar = pService->createCharacteristic(
+        CHAR_MOTOR_CMD_UUID,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+    pMotorCmdChar->setCallbacks(new MotorCmdCallback());
+    
+    // Motor Status characteristic (Notify)
+    pMotorStatusChar = pService->createCharacteristic(
+        CHAR_MOTOR_STATUS_UUID,
+        BLECharacteristic::PROPERTY_NOTIFY
+    );
+    pMotorStatusChar->addDescriptor(new BLE2902());
+    
+    // LED Control characteristic (Write)
+    pLedControlChar = pService->createCharacteristic(
+        CHAR_LED_CONTROL_UUID,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+    pLedControlChar->setCallbacks(new LedControlCallback());
+    
+    // Battery characteristic (Read + Notify)
+    pBatteryChar = pService->createCharacteristic(
+        CHAR_BATTERY_UUID,
+        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+    );
+    pBatteryChar->addDescriptor(new BLE2902());
+    
+    // Handshake characteristic (Write + Read)
+    pHandshakeChar = pService->createCharacteristic(
+        CHAR_HANDSHAKE_UUID,
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ
+    );
+    pHandshakeChar->setCallbacks(new HandshakeCallback());
+    
+    // Start service
+    pService->start();
+    
+    // Start advertising
+    BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);
+    pAdvertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+    
+    Serial.println("[BLE] Server started — advertising as '" DEVICE_NAME "'");
 }
 
 // ═══════════════════════════════════════════════
@@ -782,26 +732,21 @@ void setupWiFi() {
 // ═══════════════════════════════════════════════
 
 void checkConnectionHealth() {
-    if (!wsConnected) return;
+    if (!deviceConnected) return;
     
     if (!handshakeComplete) {
         if (millis() - connectTime > HANDSHAKE_TIMEOUT_MS) {
-            Serial.println("[WS] Handshake timeout — disconnecting!");
-            wsClient.stop();
-            wsConnected = false;
+            Serial.println("[BLE] Handshake timeout — disconnecting!");
+            pServer->disconnect(pServer->getConnId());
             return;
         }
     }
     
     if (handshakeComplete) {
         if (millis() - lastPingTime > PING_TIMEOUT_MS) {
-            Serial.println("[WS] Ping timeout — disconnecting!");
+            Serial.println("[BLE] Ping timeout — stopping motors (keeping connection)");
             stopMotors();
-            setLED(0, 0, 0);
-            animPlaying = false;
-            wsClient.stop();
-            wsConnected = false;
-            handshakeComplete = false;
+            lastPingTime = millis();
         }
     }
 }
@@ -811,15 +756,30 @@ void checkConnectionHealth() {
 // ═══════════════════════════════════════════════
 
 void idleLEDPattern() {
-    if (wsConnected) return;
+    if (deviceConnected) return;
     
-    static unsigned long lastBlink = 0;
-    static bool ledState = false;
+    static unsigned long lastBreath = 0;
+    static int breathVal = 0;
+    static bool breathUp = true;
     
-    if (millis() - lastBlink >= 1000) { // Blink every 1 second
-        lastBlink = millis();
-        ledState = !ledState;
-        toggleOnboardLED(ledState);
+    if (millis() - lastBreath >= 15) {
+        lastBreath = millis();
+        
+        if (breathUp) {
+            breathVal += 3;
+            if (breathVal >= 255) { breathVal = 255; breathUp = false; }
+        } else {
+            breathVal -= 3;
+            if (breathVal <= 0) { breathVal = 0; breathUp = true; }
+        }
+        
+        #ifdef USE_NEOPIXEL
+        // Soft blue breathing on NeoPixel Status LED
+        pixels.setPixelColor(0, pixels.Color(0, 0, breathVal / 5)); // Low intensity blue breathing
+        pixels.show();
+        #else
+        analogWrite(LED_ONBOARD, breathVal);
+        #endif
     }
 }
 
@@ -832,66 +792,34 @@ void setup() {
     Serial.println();
     Serial.println("╔══════════════════════════════════════════════╗");
     Serial.println("║          LIK Firmware v2.0 Starting         ║");
-    Serial.println("║     ESP32 WiFi Robot — LOOI Inspired         ║");
+    Serial.println("║     ESP32 BLE Robot — LOOI Inspired          ║");
     Serial.println("╚══════════════════════════════════════════════╝");
     Serial.println();
     
     setupLEDs();
     setupMotors();
     setupBattery();
-    setupWiFi();
+    setupBLE();
     
     Serial.println();
-    Serial.println("[LIK] Ready! Waiting for WebSocket connection...");
+    Serial.println("[LIK] Ready! Waiting for BLE connection...");
     Serial.printf("[LIK] Device: %s | Version: %s\n", DEVICE_NAME, DEVICE_VERSION);
     Serial.println();
 }
 
 void loop() {
-    if (!wsConnected) {
-        WiFiClient newClient = server.available();
-        if (newClient) {
-            Serial.println("[WIFI] New client connection request");
-            
-            if (performWebSocketHandshake(newClient)) {
-                wsClient = newClient;
-                wsConnected = true;
-                handshakeComplete = false;
-                connectTime = millis();
-                lastPingTime = millis();
-                firstPacket = true;
-                Serial.println("[WS] Handshake successful! Client connected.");
-                
-                for (int i = 0; i < 3; i++) {
-                    toggleOnboardLED(true);
-                    delay(100);
-                    toggleOnboardLED(false);
-                    delay(100);
-                }
-            } else {
-                Serial.println("[WS] Handshake failed. Client rejected.");
-                newClient.stop();
-            }
-        }
-    } else {
-        if (!wsClient.connected()) {
-            Serial.println("[WS] Client disconnected");
-            wsClient.stop();
-            wsConnected = false;
-            handshakeComplete = false;
-            stopMotors();
-            setLED(0, 0, 0);
-            animPlaying = false;
-        } else {
-            handleWebSocketClient(wsClient);
-        }
-    }
-
     checkConnectionHealth();
     updateAnimation();
     updateLEDBlink();
     updateBattery();
     idleLEDPattern();
+    
+    if (!deviceConnected && oldDeviceConnected) {
+        oldDeviceConnected = false;
+    }
+    if (deviceConnected && !oldDeviceConnected) {
+        oldDeviceConnected = true;
+    }
     
     delay(10);
 }

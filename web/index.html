@@ -29,14 +29,14 @@
                 <div class="ring"></div>
                 <div class="ring"></div>
                 <div class="ring"></div>
-                <div class="center"><i data-lucide="wifi" class="icon-pulse"></i></div>
+                <div class="center"><i data-lucide="bluetooth" class="icon-pulse"></i></div>
             </div>
             <div class="modal-title">Connect to LIK</div>
-            <div class="modal-desc">Enter LIK's IP address or hostname. Make sure your device is connected to the same WiFi network or LIK's hotspot.</div>
-            <div class="wifi-input-group" style="width: 100%; margin: 15px 0;">
-                <input type="text" id="wifi-ip-input" class="quiz-topic-input" style="width: 100%; text-align: center; border: 1px solid var(--border-glow); border-radius: 8px; padding: 10px; background: rgba(255, 255, 255, 0.05); color: var(--text-primary);" placeholder="lik.local or 192.168.4.1">
+            <div class="modal-desc">Make sure Bluetooth is enabled on your device. Clicking Connect will search for LIK (VILY) nearby.</div>
+            <div class="wifi-input-group" style="display: none;">
+                <input type="text" id="wifi-ip-input" class="quiz-topic-input" value="ble">
             </div>
-            <button class="modal-btn primary" id="modal-connect-btn"><i data-lucide="wifi" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect</button>
+            <button class="modal-btn primary" id="modal-connect-btn"><i data-lucide="bluetooth" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect</button>
             <button class="modal-btn secondary" id="modal-cancel-btn">Cancel</button>
         </div>
     </div>
@@ -104,7 +104,7 @@
                 <div class="drawer-title-wrap">
                     <h3>LIK Control Center</h3>
                     <div class="drawer-status-bar">
-                        <div class="status-dot" id="ble-dot" title="WiFi Status"></div>
+                        <div class="status-dot" id="ble-dot" title="Bluetooth Status"></div>
                         <span class="status-battery" id="battery-text">--</span>
                     </div>
                 </div>
@@ -269,10 +269,10 @@
                         <div class="settings-group-title">Connection</div>
                         <div class="settings-list">
                             <button class="setting-item" id="setting-connect">
-                                <div class="setting-icon blue"><i data-lucide="wifi"></i></div>
+                                <div class="setting-icon blue"><i data-lucide="bluetooth"></i></div>
                                 <div class="setting-text">
-                                    <div class="title">WiFi Connection</div>
-                                    <div class="desc">Connect or disconnect LIK via WiFi</div>
+                                    <div class="title">Bluetooth Connection</div>
+                                    <div class="desc">Connect or disconnect LIK via Bluetooth</div>
                                 </div>
                                 <span class="setting-arrow"><i data-lucide="chevron-right"></i></span>
                             </button>
@@ -435,7 +435,7 @@
     </div>
 
     <!-- Scripts -->
-    <script src="wifi.js?v=2.0.0"></script>
+    <script src="ble.js?v=2.0.0"></script>
     <script src="joystick.js?v=2.0.0"></script>
     <script src="sound.js?v=2.0.0"></script>
     <script src="three_view.js?v=2.0.0"></script>

@@ -639,27 +639,21 @@ class LikApp {
     
     async connectBLE() {
         const btn = document.getElementById('modal-connect-btn');
-        const ipInput = document.getElementById('wifi-ip-input');
-        const ipAddress = ipInput ? ipInput.value.trim() : 'lik.local';
-        
-        if (!ipAddress) {
-            this.showToast('Please enter an IP address or hostname');
-            return;
-        }
-        
-        localStorage.setItem('lik-ip-address', ipAddress);
-        
         btn.classList.add('connecting');
         btn.innerHTML = '<i class="icon-pulse">📡</i> Connecting...';
         
         try {
-            await ble.connect(ipAddress);
+            await ble.connect();
             this.hideConnectModal();
         } catch (err) {
             btn.classList.remove('connecting');
-            btn.innerHTML = '<i data-lucide="wifi" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect';
+            btn.innerHTML = '<i data-lucide="bluetooth" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect';
             if (typeof lucide !== 'undefined') lucide.createIcons();
-            this.showToast('Connection failed. Try again.');
+            if (err.message && err.message.includes('User cancelled')) {
+                this.showToast('Connection cancelled');
+            } else {
+                this.showToast('Connection failed. Try again.');
+            }
         }
     }
     
@@ -670,20 +664,17 @@ class LikApp {
     
     showConnectModal() {
         const modal = document.getElementById('connect-modal');
-        modal.classList.add('show');
-        
-        // Pre-fill IP address from localStorage
-        const ipInput = document.getElementById('wifi-ip-input');
-        if (ipInput) {
-            ipInput.value = localStorage.getItem('lik-ip-address') || 'lik.local';
-        }
+        if (modal) modal.classList.add('show');
     }
     
     hideConnectModal() {
-        document.getElementById('connect-modal').classList.remove('show');
+        const modal = document.getElementById('connect-modal');
+        if (modal) modal.classList.remove('show');
         const btn = document.getElementById('modal-connect-btn');
-        btn.classList.remove('connecting');
-        btn.innerHTML = '<i data-lucide="wifi" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect';
+        if (btn) {
+            btn.classList.remove('connecting');
+            btn.innerHTML = '<i data-lucide="bluetooth" style="display:inline-block; width:16px; height:16px; vertical-align:middle; margin-right:4px;"></i> Connect';
+        }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
     
@@ -1881,18 +1872,8 @@ class LikApp {
                 `;
                 chatHistory.appendChild(userMsg);
 
-                // Append bot response message
-                const botMsg = document.createElement('div');
-                botMsg.className = 'chat-msg bot';
-                botMsg.innerHTML = `
-                    <div class="chat-msg-avatar">V</div>
-                    <div class="chat-msg-content">
-                        <div class="chat-msg-bubble">${this.formatBotReply(replyText)}</div>
-                        <span class="chat-msg-time">${timeStr}</span>
-                    </div>
-                `;
-                chatHistory.appendChild(botMsg);
-                chatHistory.scrollTop = chatHistory.scrollHeight;
+                // Append bot response message with typing animation
+                this.appendBotMessage(chatHistory, replyText, 'V', timeStr);
 
                 // Add to conversation history
                 this.conversationHistory.push({ role: 'user', content: text });
@@ -2073,34 +2054,8 @@ class LikApp {
                 ? soundEngine.prefetchTTS(data.reply, voiceLang)
                 : Promise.resolve(null);
 
-            // Add bot response to UI
-            const botMsg = document.createElement('div');
-            botMsg.className = 'chat-msg bot';
-            botMsg.innerHTML = `
-                <div class="chat-msg-avatar">V</div>
-                <div class="chat-msg-content">
-                    <div class="chat-msg-bubble"></div>
-                    <span class="chat-msg-time">${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}</span>
-                </div>
-            `;
-            chatHistory.appendChild(botMsg);
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-
-            const bubbleEl = botMsg.querySelector('.chat-msg-bubble');
-            
-            // Word-by-word typing animation
-            const words = data.reply.split(' ');
-            let wordIndex = 0;
-            const typeInterval = setInterval(() => {
-                if (wordIndex < words.length) {
-                    const currentText = words.slice(0, wordIndex + 1).join(' ');
-                    bubbleEl.innerHTML = this.formatBotReply(currentText);
-                    chatHistory.scrollTop = chatHistory.scrollHeight;
-                    wordIndex++;
-                } else {
-                    clearInterval(typeInterval);
-                }
-            }, 60); // 60ms per word for highly responsive, organic typing
+            // Add bot response to UI with typing animation
+            this.appendBotMessage(chatHistory, data.reply, 'V');
 
             // Add to conversation history
             this.conversationHistory.push({ role: 'assistant', content: data.reply });
@@ -2133,6 +2088,39 @@ class LikApp {
                 this.showFaceSubtitle(errMsgText);
             }
         }
+    }
+
+    appendBotMessage(chatHistory, text, avatar = 'V', timeStr = null) {
+        if (!timeStr) {
+            const now = new Date();
+            timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        }
+        const botMsg = document.createElement('div');
+        botMsg.className = 'chat-msg bot';
+        botMsg.innerHTML = `
+            <div class="chat-msg-avatar">${avatar}</div>
+            <div class="chat-msg-content">
+                <div class="chat-msg-bubble"></div>
+                <span class="chat-msg-time">${timeStr}</span>
+            </div>
+        `;
+        chatHistory.appendChild(botMsg);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+
+        const bubbleEl = botMsg.querySelector('.chat-msg-bubble');
+        const words = text.split(' ');
+        let wordIndex = 0;
+        const typeInterval = setInterval(() => {
+            if (wordIndex < words.length) {
+                const currentText = words.slice(0, wordIndex + 1).join(' ');
+                bubbleEl.innerHTML = this.formatBotReply(currentText);
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+                wordIndex++;
+            } else {
+                clearInterval(typeInterval);
+            }
+        }, 60);
+        return typeInterval;
     }
 
     showFaceSubtitle(text) {
@@ -2421,18 +2409,8 @@ class LikApp {
                 `;
                 chatHistory.appendChild(userMsg);
 
-                // Assistant reply log
-                const botMsg = document.createElement('div');
-                botMsg.className = 'chat-msg bot';
-                botMsg.innerHTML = `
-                    <div class="chat-msg-avatar">🤖</div>
-                    <div class="chat-msg-content">
-                        <div class="chat-msg-bubble">${this.formatBotReply(data.reply)}</div>
-                        <div class="chat-msg-time">${timeStr}</div>
-                    </div>
-                `;
-                chatHistory.appendChild(botMsg);
-                chatHistory.scrollTop = chatHistory.scrollHeight;
+                // Assistant reply log with typing animation
+                this.appendBotMessage(chatHistory, data.reply, '🤖', timeStr);
             }
 
             // Perform face mood and BLE motor movements

@@ -13,19 +13,19 @@
 // ─────────────────────────────────────────────
 //  Device Identity
 // ─────────────────────────────────────────────
-#define DEVICE_NAME         "LIK"
+#define DEVICE_NAME         "VILY"
 #define DEVICE_VERSION      "2.0.0"
 #define FIRMWARE_VERSION    1
 
 // ─────────────────────────────────────────────
-//  WiFi & WebServer Configuration
+//  BLE UUIDs (Custom 128-bit)
 // ─────────────────────────────────────────────
-#define WIFI_SSID           "Yohesh’s iPhone"
-#define WIFI_PASSWORD       "12345678"
-#define WIFI_AP_SSID        "lik"
-#define WIFI_AP_PASSWORD    "12345678"
-#define WEBSOCKET_PORT      80
-#define MDNS_HOSTNAME       "lik"
+#define SERVICE_UUID                "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHAR_MOTOR_CMD_UUID         "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define CHAR_MOTOR_STATUS_UUID      "beb5483f-36e1-4688-b7f5-ea07361b26a8"
+#define CHAR_LED_CONTROL_UUID       "beb54840-36e1-4688-b7f5-ea07361b26a8"
+#define CHAR_BATTERY_UUID           "beb54841-36e1-4688-b7f5-ea07361b26a8"
+#define CHAR_HANDSHAKE_UUID         "beb54842-36e1-4688-b7f5-ea07361b26a8"
 
 // ─────────────────────────────────────────────
 //  Motor Pins (TB6612FNG Motor Driver)
@@ -37,8 +37,8 @@
 
 // Motor B (Right)
 #define MOTOR_B_IN3     7
-#define MOTOR_B_IN4     10
-#define MOTOR_B_ENB     20    // PWM speed control (UART0 RX pin, free on native USB)
+#define MOTOR_B_IN4     2     // Reassigned from 10 to avoid SPI Flash conflict
+#define MOTOR_B_ENB     1     // Reassigned from 20 to avoid Serial conflict
 
 // Standby Pin on TB6612FNG should be connected directly to 3.3V (VCC)
 
@@ -48,10 +48,10 @@
 #define SERVO_PIN       3     // MG90S Servo control pin
 
 // ─────────────────────────────────────────────
-//  Cliff Sensors (TCRT5000)
+//  Cliff Sensors (TCRT5000) - Disabled/Unused
 // ─────────────────────────────────────────────
-#define CLIFF_PIN_L     1     // Left sensor digital output
-#define CLIFF_PIN_R     2     // Right sensor digital output
+#define CLIFF_PIN_L     21
+#define CLIFF_PIN_R     22
 
 // ─────────────────────────────────────────────
 //  LED Pins
