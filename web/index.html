@@ -64,8 +64,16 @@
     <!-- ═══════ App Shell ═══════ -->
     <div id="app">
 
-        <!-- Hidden Video for Camera Vision Scanning -->
-        <video id="vision-video" autoplay playsinline style="display:none;"></video>
+        <!-- Video Container for Camera Vision Scanning (Picture-in-Picture) -->
+        <div class="vision-preview-container" id="vision-preview-wrap">
+            <div class="vision-preview-header">
+                <span class="vision-preview-label"><span class="live-dot"></span> LIK CAM</span>
+                <button class="vision-preview-flip" id="vision-preview-flip-btn" title="Flip Camera">
+                    <i data-lucide="camera" style="width: 14px; height: 14px; vertical-align: middle;"></i>
+                </button>
+            </div>
+            <video id="vision-video" autoplay playsinline></video>
+        </div>
 
         <!-- Floating Settings/Menu Button -->
         <button class="floating-menu-btn" id="menu-btn" title="Open Controls">
@@ -76,7 +84,7 @@
         <div class="face-fullscreen-container">
             <div class="face-container">
                 <canvas id="face-canvas"></canvas>
-                <div id="three-container" style="display:none;"></div>
+                <div id="three-container" class="view-hidden"></div>
                 <div class="face-subtitle" id="face-subtitle"></div>
                 <button class="face-mic-btn" id="face-mic-btn" title="Speak to LIK">
                     <i data-lucide="mic"></i>
@@ -219,6 +227,19 @@
                                 <div class="setting-text" style="flex:1;">
                                     <div class="title">Gemini API Key</div>
                                     <input type="password" class="setting-input" id="gemini-api-key-input" placeholder="Paste your API key here...">
+                                </div>
+                            </div>
+                            <div class="setting-item" style="flex-wrap:wrap;">
+                                <div class="setting-icon purple"><i data-lucide="cpu"></i></div>
+                                <div class="setting-text" style="flex:1;">
+                                    <div class="title">Gemini Model Version</div>
+                                    <select class="setting-input" id="gemini-model-select" style="width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--border-subtle); color: var(--text-primary); outline: none; box-sizing: border-box; cursor: pointer;">
+                                        <option value="gemini-2.5-flash" style="background:#1b1b36;">Gemini 2.5 Flash (Default)</option>
+                                        <option value="gemini-2.5-pro" style="background:#1b1b36;">Gemini 2.5 Pro (Advanced)</option>
+                                        <option value="gemini-2.0-flash-exp" style="background:#1b1b36;">Gemini 2.0 Flash (Experimental)</option>
+                                        <option value="gemini-1.5-flash" style="background:#1b1b36;">Gemini 1.5 Flash (Legacy Fast)</option>
+                                        <option value="gemini-1.5-pro" style="background:#1b1b36;">Gemini 1.5 Pro (Legacy Advanced)</option>
+                                    </select>
                                 </div>
                             </div>
                             <div class="setting-item" style="flex-wrap:wrap;">

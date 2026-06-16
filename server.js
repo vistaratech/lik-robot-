@@ -428,7 +428,7 @@ Make them educational and concise.`;
 //  Settings Endpoints
 // ─────────────────────────────────────────────
 app.post('/api/settings/keys', (req, res) => {
-    const { geminiKey, openaiKey, groqKey } = req.body;
+    const { geminiKey, openaiKey, groqKey, geminiModel } = req.body;
     
     // Read current .env
     const envPath = path.join(__dirname, '.env');
@@ -460,10 +460,15 @@ app.post('/api/settings/keys', (req, res) => {
         envContent = updateEnv(envContent, 'GROQ_API_KEY', groqKey);
         process.env.GROQ_API_KEY = groqKey;
     }
+    if (geminiModel !== undefined) {
+        envContent = updateEnv(envContent, 'GEMINI_MODEL', geminiModel);
+        process.env.GEMINI_MODEL = geminiModel;
+        console.log(`[Settings] Gemini Model set to: ${geminiModel}`);
+    }
 
     fs.writeFileSync(envPath, envContent.trim() + '\n');
-    console.log('[Settings] API keys updated');
-    res.json({ success: true, message: 'API keys saved' });
+    console.log('[Settings] API keys & configurations updated');
+    res.json({ success: true, message: 'API keys & configurations saved' });
 });
 
 // ─────────────────────────────────────────────

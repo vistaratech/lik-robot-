@@ -17,6 +17,15 @@ class Robot3DView {
         this.controls = null;
         this.animationFrameId = null;
         
+        // Lights
+        this.dirLight = null;
+        this.fillLight = null;
+        this.screenLight = null;
+        
+        // Camera entrance and breathing states
+        this.isEntering = true;
+        this.entranceProgress = 0;
+        
         // 3D Objects
         this.robotGroup = null;
         this.headMesh = null;
@@ -37,6 +46,12 @@ class Robot3DView {
         
         this.isMoving = false;
         this.moveSpeed = 0;
+        
+        // 3D Dance Anim State
+        this.isDancing = false;
+        this.danceTimer = 0;
+        this.dancePhase = 0;
+        this.danceDuration = 4.0;
         
         this.init();
     }
@@ -68,7 +83,8 @@ class Robot3DView {
 
         // 2. Camera
         this.camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
-        this.camera.position.set(0, 3, 7.5);
+        this.camera.position.set(5, 4, 9);
+        this.camera.lookAt(new THREE.Vector3(0, 1, 0));
 
         // 3. Controls (OrbitControls)
         if (THREE.OrbitControls) {
@@ -84,25 +100,25 @@ class Robot3DView {
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
         this.scene.add(ambientLight);
 
-        const dirLight = new THREE.DirectionalLight(0x7c5cfc, 0.85); // Purple accent light
-        dirLight.position.set(4, 8, 4);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 1024;
-        dirLight.shadow.mapSize.height = 1024;
-        dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 25;
-        dirLight.shadow.bias = -0.001;
-        this.scene.add(dirLight);
+        this.dirLight = new THREE.DirectionalLight(0x7c5cfc, 0.85); // Purple accent light
+        this.dirLight.position.set(4, 8, 4);
+        this.dirLight.castShadow = true;
+        this.dirLight.shadow.mapSize.width = 1024;
+        this.dirLight.shadow.mapSize.height = 1024;
+        this.dirLight.shadow.camera.near = 0.5;
+        this.dirLight.shadow.camera.far = 25;
+        this.dirLight.shadow.bias = -0.001;
+        this.scene.add(this.dirLight);
 
         // Warm fill light
-        const fillLight = new THREE.DirectionalLight(0x4facfe, 0.5); // Blue fill
-        fillLight.position.set(-4, 2, -4);
-        this.scene.add(fillLight);
+        this.fillLight = new THREE.DirectionalLight(0x4facfe, 0.5); // Blue fill
+        this.fillLight.position.set(-4, 2, -4);
+        this.scene.add(this.fillLight);
 
         // Head screen glow light
-        const screenLight = new THREE.PointLight(0x4facfe, 0.8, 3);
-        screenLight.position.set(0, 1.2, 0.8);
-        this.scene.add(screenLight);
+        this.screenLight = new THREE.PointLight(0x4facfe, 0.8, 3);
+        this.screenLight.position.set(0, 1.2, 0.8);
+        this.scene.add(this.screenLight);
 
         // 5. Floor (Desk)
         const floorGeo = new THREE.CylinderGeometry(15, 15, 0.2, 32);
@@ -321,40 +337,145 @@ class Robot3DView {
         // 2. Physics & animations
         const dt = 0.016; // approximate time delta
         
-        // Spin wheels if moving
-        if (this.isMoving) {
-            const rotDelta = (this.moveSpeed / 100) * 0.15;
-            this.wheelRotation += rotDelta;
+        const lerp = (a, b, t) => a + (b - a) * t;
+
+        // Camera entrance orbit glide
+        if (this.isEntering) {
+            this.entranceProgress += dt;
+            const progress = Math.min(this.entranceProgress / 1.8, 1);
+            // Cubic out easing
+            const t = 1 - Math.pow(1 - progress, 3);
             
-            if (this.leftWheel && this.rightWheel) {
-                this.leftWheel.rotation.x = this.wheelRotation;
-                this.rightWheel.rotation.x = this.wheelRotation;
+            const startPos = new THREE.Vector3(5, 4, 9);
+            const endPos = new THREE.Vector3(0, 3, 7.5);
+            this.camera.position.lerpVectors(startPos, endPos, t);
+            
+            const startTarget = new THREE.Vector3(0, 1, 0);
+            const endTarget = new THREE.Vector3(0, 1.2, 0);
+            const currentTarget = new THREE.Vector3().lerpVectors(startTarget, endTarget, t);
+            this.camera.lookAt(currentTarget);
+            
+            if (this.controls) {
+                this.controls.target.copy(endTarget);
+            }
+            
+            if (progress >= 1) {
+                this.isEntering = false;
             }
         }
 
-        // Smoothly interpolate neck joints rotation
-        const lerp = (a, b, t) => a + (b - a) * t;
-        this.neckRotationX = lerp(this.neckRotationX, this.targetNeckRotationX, 0.1);
-        this.neckRotationY = lerp(this.neckRotationY, this.targetNeckRotationY, 0.1);
-
-        if (this.neckJoint) {
-            this.neckJoint.rotation.x = this.neckRotationX;
-            this.neckJoint.rotation.y = this.neckRotationY;
+        // Dynamic breathing light pulses
+        const timeSecs = Date.now() * 0.001;
+        const pulse = Math.sin(timeSecs * Math.PI * 0.5) * 0.12; // slow 0.25 Hz pulse
+        
+        if (this.dirLight) {
+            this.dirLight.intensity = 0.85 + pulse;
         }
+        if (this.fillLight) {
+            this.fillLight.intensity = 0.5 - pulse * 0.5;
+        }
+        if (this.screenLight) {
+            this.screenLight.intensity = 0.8 + pulse * 0.4;
+        }
+        
+        if (this.isDancing) {
+            this.danceTimer += dt;
+            this.dancePhase += dt * 10;
+            
+            // 3D Dance Moves
+            if (this.robotGroup && this.neckJoint && this.leftWheel && this.rightWheel) {
+                // Bob body up & down
+                this.robotGroup.position.y = 0.2 + Math.abs(Math.sin(this.dancePhase * 1.2)) * 0.25;
+                
+                // Sway body side-to-side (roll and yaw)
+                this.robotGroup.rotation.y = Math.sin(this.dancePhase * 0.6) * 0.25;
+                this.robotGroup.rotation.z = Math.sin(this.dancePhase * 1.2) * 0.12;
+                
+                // Bob head/neck out of phase with body
+                this.neckJoint.rotation.x = Math.sin(this.dancePhase * 2.0) * 0.18;
+                this.neckJoint.rotation.y = Math.cos(this.dancePhase * 1.0) * 0.22;
+                
+                // Spin wheels in opposite directions
+                this.wheelRotation += 0.2;
+                this.leftWheel.rotation.x = this.wheelRotation;
+                this.rightWheel.rotation.x = -this.wheelRotation;
+            }
+            
+            if (this.danceTimer >= this.danceDuration) {
+                this.stopDance();
+            }
+        } else {
+            // Spin wheels if moving
+            if (this.isMoving) {
+                const rotDelta = (this.moveSpeed / 100) * 0.15;
+                this.wheelRotation += rotDelta;
+                
+                if (this.leftWheel && this.rightWheel) {
+                    this.leftWheel.rotation.x = this.wheelRotation;
+                    this.rightWheel.rotation.x = this.wheelRotation;
+                }
+            }
 
-        // Idle breathing neck tilt (very subtle)
-        if (!this.isMoving) {
-            const t = Date.now() / 1500;
-            this.neckJoint.rotation.x = this.neckRotationX + Math.sin(t) * 0.03;
-            this.neckJoint.rotation.y = this.neckRotationY + Math.cos(t * 0.5) * 0.02;
+            // Smoothly interpolate neck joints rotation
+            this.neckRotationX = lerp(this.neckRotationX, this.targetNeckRotationX, 0.1);
+            this.neckRotationY = lerp(this.neckRotationY, this.targetNeckRotationY, 0.1);
+
+            if (this.neckJoint) {
+                this.neckJoint.rotation.x = this.neckRotationX;
+                this.neckJoint.rotation.y = this.neckRotationY;
+            }
+
+            // Idle breathing neck tilt (very subtle)
+            if (!this.isMoving) {
+                const t = Date.now() / 1500;
+                this.neckJoint.rotation.x = this.neckRotationX + Math.sin(t) * 0.03;
+                this.neckJoint.rotation.y = this.neckRotationY + Math.cos(t * 0.5) * 0.02;
+            }
         }
 
         // 3. Render
-        if (this.controls) {
+        if (!this.isEntering && this.controls) {
             this.controls.update();
         }
 
+        // Apply breathing bob offset AFTER controls update, but BEFORE rendering
+        let origCamPos = null;
+        if (!this.isDancing && !this.isEntering) {
+            origCamPos = this.camera.position.clone();
+            const t = Date.now() * 0.001;
+            this.camera.position.x += Math.sin(t * 0.7) * 0.04;
+            this.camera.position.y += Math.cos(t * 0.9) * 0.03;
+            this.camera.position.z += Math.sin(t * 0.5) * 0.04;
+        }
+
         this.renderer.render(this.scene, this.camera);
+
+        // Restore original camera position to prevent drift in OrbitControls
+        if (origCamPos) {
+            this.camera.position.copy(origCamPos);
+        }
+    }
+
+    startDance(duration = 4.0) {
+        this.isDancing = true;
+        this.danceTimer = 0;
+        this.dancePhase = 0;
+        this.danceDuration = duration;
+        console.log('[3D] 🕺 3D Dance animation started!');
+    }
+
+    stopDance() {
+        this.isDancing = false;
+        this.danceTimer = 0;
+        this.dancePhase = 0;
+        if (this.robotGroup) {
+            this.robotGroup.position.set(0, 0.2, 0);
+            this.robotGroup.rotation.set(0, 0, 0);
+        }
+        if (this.neckJoint) {
+            this.neckJoint.rotation.set(this.neckRotationX, this.neckRotationY, 0);
+        }
+        console.log('[3D] 🕺 3D Dance animation stopped.');
     }
 
     destroy() {

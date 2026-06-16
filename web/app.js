@@ -208,8 +208,8 @@ class LikApp {
             const threeContainer = document.getElementById('three-container');
             
             if (is3d) {
-                faceCanvas.style.display = 'none';
-                threeContainer.style.display = 'block';
+                faceCanvas.classList.add('view-hidden');
+                threeContainer.classList.remove('view-hidden');
                 if (!this.threeView) {
                     this.threeView = new Robot3DView('three-container', 'face-canvas');
                     const bgVal = this.theme === 'light' ? 0xf5f6fa : 0x0a0a0f;
@@ -219,8 +219,8 @@ class LikApp {
                     }
                 }
             } else {
-                threeContainer.style.display = 'none';
-                faceCanvas.style.display = 'block';
+                threeContainer.classList.add('view-hidden');
+                faceCanvas.classList.remove('view-hidden');
                 if (this.threeView) {
                     this.threeView.destroy();
                     this.threeView = null;
@@ -246,6 +246,14 @@ class LikApp {
     
     setupFace() {
         this.face = new RobotFace('face-canvas');
+        
+        // ═══════ LOOI Boot Animation — play wake-up sequence on startup ═══════
+        this.face.playBootAnimation();
+        const faceContainer = document.querySelector('.face-container');
+        if (faceContainer) {
+            faceContainer.classList.add('booting');
+            setTimeout(() => faceContainer.classList.remove('booting'), 2000);
+        }
         
         // Update mood label periodically
         setInterval(() => this.updateMoodLabel(), 1000);
@@ -415,8 +423,8 @@ class LikApp {
         const switchTo3D = () => {
             if (btn2d) btn2d.classList.remove('active');
             if (btn3d) btn3d.classList.add('active');
-            faceCanvas.style.display = 'none';
-            threeContainer.style.display = 'block';
+            faceCanvas.classList.add('view-hidden');
+            threeContainer.classList.remove('view-hidden');
             if (!this.threeView) {
                 this.threeView = new Robot3DView('three-container', 'face-canvas');
                 const bgVal = this.theme === 'light' ? 0xf5f6fa : 0x0a0a0f;
@@ -431,8 +439,8 @@ class LikApp {
         const switchTo2D = () => {
             if (btn3d) btn3d.classList.remove('active');
             if (btn2d) btn2d.classList.add('active');
-            threeContainer.style.display = 'none';
-            faceCanvas.style.display = 'block';
+            threeContainer.classList.add('view-hidden');
+            faceCanvas.classList.remove('view-hidden');
             if (this.threeView) {
                 this.threeView.destroy();
                 this.threeView = null;
@@ -489,6 +497,61 @@ class LikApp {
                 
                 this.showToast(`AI Provider: ${displayName}`);
             });
+        }
+    }
+
+    triggerDanceAnimation(duration = 4.0) {
+        if (this.face) {
+            this.face.startDance(duration);
+        }
+        
+        const wasIn2D = !document.getElementById('face-canvas').classList.contains('view-hidden');
+        if (wasIn2D) {
+            const faceCanvas = document.getElementById('face-canvas');
+            const threeContainer = document.getElementById('three-container');
+            if (faceCanvas && threeContainer) {
+                faceCanvas.classList.add('view-hidden');
+                threeContainer.classList.remove('view-hidden');
+                
+                if (!this.threeView) {
+                    this.threeView = new Robot3DView('three-container', 'face-canvas');
+                    const bgVal = this.theme === 'light' ? 0xf5f6fa : 0x0a0a0f;
+                    if (this.threeView.scene) {
+                        this.threeView.scene.background.setHex(bgVal);
+                        this.threeView.scene.fog.color.setHex(bgVal);
+                    }
+                }
+            }
+        }
+        
+        if (this.threeView) {
+            this.threeView.startDance(duration);
+        }
+        
+        if (wasIn2D) {
+            if (this.danceSwitchTimeout) {
+                clearTimeout(this.danceSwitchTimeout);
+            }
+            this.danceSwitchTimeout = setTimeout(() => {
+                if (this.currentPage === 'home') {
+                    const faceCanvas = document.getElementById('face-canvas');
+                    const threeContainer = document.getElementById('three-container');
+                    const toggle3d = document.getElementById('toggle-3d-view');
+                    const is3dCurrentlyOn = toggle3d && toggle3d.classList.contains('on');
+                    
+                    if (!is3dCurrentlyOn && faceCanvas && threeContainer) {
+                        threeContainer.classList.add('view-hidden');
+                        faceCanvas.classList.remove('view-hidden');
+                        if (this.threeView) {
+                            this.threeView.destroy();
+                            this.threeView = null;
+                        }
+                        if (this.face) {
+                            this.face.setupCanvas();
+                        }
+                    }
+                }
+            }, duration * 1000);
         }
     }
     
@@ -766,6 +829,12 @@ class LikApp {
     // ─────────────────────────────────────
     
     setupSettings() {
+        // Initialize Gemini model version dropdown selection
+        const modelSelect = document.getElementById('gemini-model-select');
+        if (modelSelect) {
+            modelSelect.value = localStorage.getItem('lik-gemini-model') || 'gemini-2.5-flash';
+        }
+
         // Voice Language selection
         document.querySelectorAll('[data-lang]').forEach(btn => {
             if (btn.dataset.lang === this.voiceLanguage) {
@@ -844,6 +913,28 @@ class LikApp {
                 }
             });
         });
+
+        // Video PIP preview Camera Flip Button
+        document.getElementById('vision-preview-flip-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const nextFacing = this.cameraFacingMode === 'user' ? 'environment' : 'user';
+            this.cameraFacingMode = nextFacing;
+            localStorage.setItem('lik-camera-facing', nextFacing);
+            
+            // Sync settings pane buttons
+            document.querySelectorAll('[data-facing]').forEach(b => {
+                if (b.dataset.facing === nextFacing) b.classList.add('active');
+                else b.classList.remove('active');
+            });
+            
+            this.showToast(`Camera flipped to: ${nextFacing === 'user' ? 'Front' : 'Back'}`);
+            
+            // Restart camera stream to apply changes
+            if (this.visionStream) {
+                this.stopVisionCamera();
+                this.startVisionCamera();
+            }
+        });
         
         // Connect/Disconnect setting
         document.getElementById('setting-connect')?.addEventListener('click', () => {
@@ -899,25 +990,27 @@ class LikApp {
             });
         });
 
-        // Save API keys
+        // Save API keys & configurations
         document.getElementById('save-api-keys-btn')?.addEventListener('click', async () => {
             const geminiKey = document.getElementById('gemini-api-key-input')?.value.trim();
             const openaiKey = document.getElementById('openai-api-key-input')?.value.trim();
             const groqKey = document.getElementById('groq-api-key-input')?.value.trim();
+            const geminiModel = document.getElementById('gemini-model-select')?.value || 'gemini-2.5-flash';
 
             try {
                 const response = await fetch('/api/settings/keys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ geminiKey, openaiKey, groqKey })
+                    body: JSON.stringify({ geminiKey, openaiKey, groqKey, geminiModel })
                 });
                 if (response.ok) {
-                    this.showToast('🔑 API Keys saved!');
+                    localStorage.setItem('lik-gemini-model', geminiModel);
+                    this.showToast('🔑 Settings & Keys saved!');
                 } else {
-                    this.showToast('Failed to save keys');
+                    this.showToast('Failed to save settings');
                 }
             } catch (err) {
-                this.showToast('Failed to save keys — check server');
+                this.showToast('Failed to save settings — check server');
             }
         });
 
@@ -1404,13 +1497,16 @@ class LikApp {
 
                 if (text && text.length > 1) {
                     this.showToast(`Voice: "${text}"`);
-                    if (this.activeMic === 'home') {
-                        this.sendChatMessage(text, true);
-                    } else {
-                        const textInput = document.getElementById('chat-text-input');
-                        if (textInput) textInput.value = text;
-                        this.sendChatMessage(text, false);
-                        if (textInput) textInput.value = '';
+                    const wasCommand = await this.checkVoiceCommand(text, this.activeMic === 'home');
+                    if (!wasCommand) {
+                        if (this.activeMic === 'home') {
+                            this.sendChatMessage(text, true);
+                        } else {
+                            const textInput = document.getElementById('chat-text-input');
+                            if (textInput) textInput.value = text;
+                            this.sendChatMessage(text, false);
+                            if (textInput) textInput.value = '';
+                        }
                     }
                 } else {
                     this.showToast("No speech detected. Try again!");
@@ -1440,6 +1536,325 @@ class LikApp {
                 }
             }
         };
+    }
+
+    async checkVoiceCommand(text, isHomeVoice = false) {
+        const clean = text.toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g,"");
+        
+        // Define commands mapping
+        const commands = [
+            {
+                keywords: ['dance', 'dancer', 'dancing', 'ஆடு', 'நடனம்', 'wiggle', 'wobble'],
+                action: () => {
+                    this.triggerDanceAnimation(4.0);
+                    this.face.showCommand('🕺 DANCE 🕺', 4000);
+                },
+                reply: {
+                    en: "Woohoo! Let's get groovy and dance! Feel the beat!",
+                    ta: "ஆஹா! நான் நடனமாடப் போகிறேன்! என் ஆட்டத்தைப் பாருங்கள்!"
+                }
+            },
+            {
+                keywords: ['sleep', 'sleepy', 'go to sleep', 'good night', 'tired', 'thoongu', 'தூங்கு', 'தூக்கம்'],
+                action: () => {
+                    this.face.setMood('sleepy', 10000, true, true);
+                    this.face.showCommand('💤 SLEEPY 💤', 4000);
+                },
+                reply: {
+                    en: "Yawn... I'm so sleepy. Good night!",
+                    ta: "ஆஆஹ்... எனக்கு மிகவும் தூக்கம் வருகிறது. குட் நைட்!"
+                }
+            },
+            {
+                keywords: ['wake up', 'wake', 'wakeup', 'hello robot', 'hi robot', 'எழுந்திரு', 'விழி', 'wake up robot'],
+                action: () => {
+                    this.face.playBootAnimation();
+                    this.face.showCommand('☀️ WAKE UP ☀️', 4000);
+                },
+                reply: {
+                    en: "Wow! Good morning! I'm awake and ready to study!",
+                    ta: "வணக்கம்! நான் விழித்துக்கொண்டேன், படிக்க தயார்!"
+                }
+            },
+            {
+                keywords: ['angry', 'mad', 'furious', 'hate you', 'bad robot', 'கோபம்', 'கோபமா'],
+                action: () => {
+                    this.face.setMood('angry', 5000, true, true);
+                    this.face.showCommand('💢 ANGRY 💢', 4000);
+                },
+                reply: {
+                    en: "Hmph! You are making me angry! Grrr...",
+                    ta: "ஹ்ம்! எனக்கு மிகவும் கோபமாக இருக்கிறது!"
+                }
+            },
+            {
+                keywords: ['love', 'heart', 'i love you', 'love you', 'sweetheart', 'அன்பு', 'காதல்'],
+                action: () => {
+                    this.face.setMood('love', 5000, true, true);
+                    this.face.showCommand('❤️ LOVE ❤️', 4000);
+                },
+                reply: {
+                    en: "Aww, I love you too! You are the best companion!",
+                    ta: "ஐ லவ் யூ டூ! நீங்கள் சிறந்த நண்பர்!"
+                }
+            },
+            {
+                keywords: ['happy', 'smile', 'santhosam', 'சிரி', 'மகிழ்ச்சி', 'be happy'],
+                action: () => {
+                    this.face.setMood('happy', 5000, true, true);
+                    this.face.showCommand('😊 HAPPY 😊', 4000);
+                },
+                reply: {
+                    en: "Hehehe! I'm super happy and smiling!",
+                    ta: "ஹிஹிஹி! நான் மிகவும் மகிழ்ச்சியாக இருக்கிறேன்!"
+                }
+            },
+            {
+                keywords: ['excited', 'jump', 'bounce', 'super', 'awesome', 'துள்ளு', 'உற்சாகம்'],
+                action: () => {
+                    this.face.setMood('excited', 5000, true, true);
+                    this.face.bounceVel = -5.0;
+                    this.face.showCommand('⚡ EXCITED ⚡', 4000);
+                },
+                reply: {
+                    en: "Oh my god! This is so exciting! Yeah!",
+                    ta: "அற்புதம்! இது மிகவும் உற்சாகமாக இருக்கிறது!"
+                }
+            },
+            {
+                keywords: ['shy', 'blush', 'cute', 'வெட்கம்', 'vetkam'],
+                action: () => {
+                    this.face.setMood('shy', 5000, true, true);
+                    this.face.showCommand('😳 SHY 😳', 4000);
+                },
+                reply: {
+                    en: "Oh stop, you are making me blush!",
+                    ta: "ஐயோ, எனக்கு வெட்கமாக இருக்கிறது!"
+                }
+            },
+            {
+                keywords: ['surprised', 'shocked', 'wow', 'really', 'ஆச்சரியம்', 'அதிசயம்'],
+                action: () => {
+                    this.face.setMood('surprised', 5000, true, true);
+                    this.face.showCommand('😲 SURPRISED 😲', 4000);
+                },
+                reply: {
+                    en: "Wow! No way! That is unbelievable!",
+                    ta: "அப்படியா! என்னால் நம்பவே முடியவில்லை!"
+                }
+            },
+            {
+                keywords: ['thinking', 'think', 'yogi', 'யோசி'],
+                action: () => {
+                    this.face.setMood('thinking', 5000, true, true);
+                    this.face.showCommand('🤔 THINKING 🤔', 4000);
+                },
+                reply: {
+                    en: "Hmmm... let me ponder on that for a second.",
+                    ta: "ம்ம்ம்... நான் அதைப்பற்றி யோசிக்கிறேன்."
+                }
+            },
+            {
+                keywords: ['eureka', 'idea', 'bulb', 'யோசனை'],
+                action: () => {
+                    this.face.setMood('eureka', 5000, true, true);
+                    this.face.showCommand('💡 EUREKA! 💡', 4000);
+                },
+                reply: {
+                    en: "Aha! I have got a bright idea! Check this out!",
+                    ta: "ஆஹா! எனக்கு ஒரு அருமையான யோசனை தோன்றிவிட்டது!"
+                }
+            },
+            {
+                keywords: ['sad', 'cry', 'unhappy', 'அழு', 'வருத்தம்'],
+                action: () => {
+                    this.face.setMood('sad', 5000, true, true);
+                    this.face.showCommand('😢 SAD 😢', 4000);
+                },
+                reply: {
+                    en: "Aww... that makes me really sad. *sniff*",
+                    ta: "ஐயோ... அது எனக்கு மிகவும் வருத்தத்தை அளிக்கிறது."
+                }
+            },
+            {
+                keywords: ['focused', 'focus', 'study', 'exam', 'concentrate', 'கவனம்', 'padi'],
+                action: () => {
+                    this.face.setMood('focused', 5000, true, true);
+                    this.face.showCommand('🎯 FOCUSED 🎯', 4000);
+                },
+                reply: {
+                    en: "Focus mode activated! Let's get to work.",
+                    ta: "கவனம் செலுத்த வேண்டிய நேரம்! படிப்பைத் தொடங்குவோம்."
+                }
+            },
+            {
+                keywords: ['nod', 'yes', 'agree', 'சரி', 'ஆம்'],
+                action: () => {
+                    this.face.playNod();
+                    this.face.showCommand('👍 NOD 👍', 3000);
+                },
+                reply: {
+                    en: "Yes, I agree! I am nodding my head.",
+                    ta: "ஆம், நான் ஒப்புக்கொள்கிறேன்!"
+                }
+            },
+            {
+                keywords: ['shake', 'no', 'disagree', 'இல்லை', 'கூடாது'],
+                action: () => {
+                    this.face.playShake();
+                    this.face.showCommand('👎 SHAKE 👎', 3000);
+                },
+                reply: {
+                    en: "No, I don't agree! Shaking my head no.",
+                    ta: "இல்லை, நான் அதை ஏற்கவில்லை!"
+                }
+            },
+            {
+                keywords: ['look around', 'look', 'eyes', 'பார்', 'சுற்றிப்பார்'],
+                action: () => {
+                    this.face.targetPupilX = (Math.random() - 0.5) * 0.9;
+                    this.face.targetPupilY = (Math.random() - 0.5) * 0.6;
+                    this.face.showCommand('👀 LOOK AROUND 👀', 3000);
+                },
+                reply: {
+                    en: "Looking around! My pupils are tracking.",
+                    ta: "சுற்றிப் பார்க்கிறேன்! என் கண்கள் நகர்கின்றன."
+                }
+            },
+            {
+                keywords: ['what is this', 'what is in my hand', 'what do i have', 'identify object', 'detect object', 'identify', 'detect', 'what is that', 'what am i holding', 'holding', 'இது என்ன', 'என் கையில் என்ன', 'கண்டறி', 'பொருள்', 'பொருளைக் காண்க', 'என்ன வச்சிருக்கேன்', 'வச்சிருக்கேன்'],
+                action: async () => {
+                    this.showToast('📷 Opening camera...');
+                    const success = await this.startVisionCamera();
+                    if (!success) {
+                        return;
+                    }
+                    
+                    // Show a countdown/guidance on face canvas or subtitle
+                    let countdown = 3;
+                    const interval = setInterval(() => {
+                        if (countdown > 0) {
+                            const countdownText = {
+                                en: `Show me the object... Scanning in ${countdown}`,
+                                ta: `பொருளைக் காட்டுங்கள்... ${countdown} நொடியில்`
+                            };
+                            const isTamil = (localStorage.getItem('lik-voice-lang') || 'en-US').startsWith('ta');
+                            this.showFaceSubtitle(isTamil ? countdownText.ta : countdownText.en);
+                            if (typeof soundEngine !== 'undefined') {
+                                soundEngine.playBeep(800, 100);
+                            }
+                            countdown--;
+                        } else {
+                            clearInterval(interval);
+                            // Capture and scan
+                            this.captureAndScan(false);
+                        }
+                    }, 1000);
+                },
+                reply: {
+                    en: "Sure, let me open my camera. Please hold the object in front of LIK CAM!",
+                    ta: "சரி, பார்க்கிறேன்! உங்கள் கையில் இருக்கும் பொருளை என் கேமராவில் காட்டுங்கள்!"
+                }
+            }
+        ];
+
+        // Find match
+        let matchedCommand = null;
+        for (const cmd of commands) {
+            for (const keyword of cmd.keywords) {
+                const isTamilKeyword = /[\u0B80-\u0BFF]/.test(keyword);
+                if (isTamilKeyword) {
+                    if (clean.includes(keyword)) {
+                        matchedCommand = cmd;
+                        break;
+                    }
+                } else {
+                    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+                    if (regex.test(clean)) {
+                        matchedCommand = cmd;
+                        break;
+                    }
+                }
+            }
+            if (matchedCommand) break;
+        }
+
+        if (matchedCommand) {
+            console.log(`[Voice Command] Intercepted keyword from: "${text}". Triggering action.`);
+            
+            // Execute animation action
+            matchedCommand.action();
+
+            // Set reply text based on current language
+            const lang = localStorage.getItem('lik-voice-lang') || 'en-US';
+            const isTamil = lang.startsWith('ta');
+            const replyText = isTamil ? matchedCommand.reply.ta : matchedCommand.reply.en;
+
+            // Render in chat bubble if panel is open or if we want it recorded
+            const chatHistory = document.getElementById('chat-history');
+            if (chatHistory) {
+                // Hide welcome
+                const welcome = document.getElementById('chat-welcome');
+                if (welcome) welcome.style.display = 'none';
+
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+                // Append user command message
+                const userMsg = document.createElement('div');
+                userMsg.className = 'chat-msg user';
+                userMsg.innerHTML = `
+                    <div class="chat-msg-avatar">U</div>
+                    <div class="chat-msg-content">
+                        <div class="chat-msg-bubble">${this.escapeHtml(text)}</div>
+                        <span class="chat-msg-time">${timeStr}</span>
+                    </div>
+                `;
+                chatHistory.appendChild(userMsg);
+
+                // Append bot response message
+                const botMsg = document.createElement('div');
+                botMsg.className = 'chat-msg bot';
+                botMsg.innerHTML = `
+                    <div class="chat-msg-avatar">V</div>
+                    <div class="chat-msg-content">
+                        <div class="chat-msg-bubble">${this.formatBotReply(replyText)}</div>
+                        <span class="chat-msg-time">${timeStr}</span>
+                    </div>
+                `;
+                chatHistory.appendChild(botMsg);
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+
+                // Add to conversation history
+                this.conversationHistory.push({ role: 'user', content: text });
+                this.conversationHistory.push({ role: 'assistant', content: replyText });
+            }
+
+            // Show subtitle on face
+            if (isHomeVoice) {
+                this.showFaceSubtitle(replyText);
+            }
+
+            // Speak response (Beep then Voice)
+            if (typeof soundEngine !== 'undefined') {
+                soundEngine.stopSpeaking();
+                if (clean.includes('dance')) {
+                    soundEngine.playBeep(900, 100, 'sine', 0.12, 1300);
+                } else if (clean.includes('sleep')) {
+                    soundEngine.playBeep(260, 400, 'sine', 0.06);
+                } else {
+                    soundEngine.playBeep(600, 100, 'sine', 0.08, 800);
+                }
+                
+                setTimeout(() => {
+                    soundEngine.speak(replyText);
+                }, 200);
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     showSecureModal() {
@@ -1704,24 +2119,36 @@ class LikApp {
             this.updateMoodLabel();
         }
 
-        // 3. Physical BLE execution
-        if (this.connected && data.action && data.action !== 'none') {
+        // 3. ═══════ LOOI Face Animations + Physical BLE execution ═══════
+        if (data.action && data.action !== 'none') {
             const act = data.action.toLowerCase();
-            if (act === 'dance') ble.playAnimation(0x03);
-            else if (act === 'nod') ble.playAnimation(0x02);
-            else if (act === 'shake') ble.playAnimation(0x01);
-            else if (act === 'excited') ble.playAnimation(0x04);
-            else if (act === 'shy') ble.playAnimation(0x05);
-            else if (act === 'forward') ble.moveForward(this.maxSpeed);
-            else if (act === 'backward') ble.moveBackward(this.maxSpeed);
-            else if (act === 'left') ble.spinLeft(this.maxSpeed);
-            else if (act === 'right') ble.spinRight(this.maxSpeed);
-            else if (act === 'stop') ble.stop();
             
-            if (['forward', 'backward', 'left', 'right'].includes(act)) {
-                setTimeout(() => {
-                    if (this.connected) ble.stop();
-                }, 1500);
+            // Face-level animations (always play, even without BLE connection)
+            if (this.face) {
+                if (act === 'dance') this.triggerDanceAnimation(4.0);
+                else if (act === 'nod') this.face.playNod();
+                else if (act === 'shake') this.face.playShake();
+                else if (act === 'spin_left' || act === 'spin_right') this.triggerDanceAnimation(2.0);
+            }
+            
+            // Physical BLE execution (only when connected)
+            if (this.connected) {
+                if (act === 'dance') ble.playAnimation(0x03);
+                else if (act === 'nod') ble.playAnimation(0x02);
+                else if (act === 'shake') ble.playAnimation(0x01);
+                else if (act === 'excited') ble.playAnimation(0x04);
+                else if (act === 'shy') ble.playAnimation(0x05);
+                else if (act === 'forward') ble.moveForward(this.maxSpeed);
+                else if (act === 'backward') ble.moveBackward(this.maxSpeed);
+                else if (act === 'left') ble.spinLeft(this.maxSpeed);
+                else if (act === 'right') ble.spinRight(this.maxSpeed);
+                else if (act === 'stop') ble.stop();
+                
+                if (['forward', 'backward', 'left', 'right'].includes(act)) {
+                    setTimeout(() => {
+                        if (this.connected) ble.stop();
+                    }, 1500);
+                }
             }
         }
     }
@@ -1760,6 +2187,7 @@ class LikApp {
 
     async startVisionCamera() {
         const video = document.getElementById('vision-video');
+        const previewWrap = document.getElementById('vision-preview-wrap');
         if (!video) return false;
 
         try {
@@ -1775,6 +2203,11 @@ class LikApp {
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.visionStream = stream;
             video.srcObject = stream;
+            
+            // Show PIP camera preview overlay
+            if (previewWrap) {
+                previewWrap.classList.add('show');
+            }
             return true;
         } catch (err) {
             console.error('[Vision] Camera Access Error:', err);
@@ -1785,11 +2218,17 @@ class LikApp {
 
     stopVisionCamera() {
         const video = document.getElementById('vision-video');
+        const previewWrap = document.getElementById('vision-preview-wrap');
         if (video) video.srcObject = null;
 
         if (this.visionStream) {
             this.visionStream.getTracks().forEach(track => track.stop());
             this.visionStream = null;
+        }
+
+        // Hide PIP camera preview overlay
+        if (previewWrap) {
+            previewWrap.classList.remove('show');
         }
     }
 
@@ -1874,7 +2313,7 @@ class LikApp {
                 userMsg.innerHTML = `
                     <div class="chat-msg-avatar">📷</div>
                     <div class="chat-msg-content">
-                        <div class="chat-msg-text"><em>*Showed LIK the desk/camera*</em></div>
+                        <div class="chat-msg-bubble"><em>*Showed LIK the desk/camera*</em></div>
                         <div class="chat-msg-time">${timeStr}</div>
                     </div>
                 `;
@@ -1886,7 +2325,7 @@ class LikApp {
                 botMsg.innerHTML = `
                     <div class="chat-msg-avatar">🤖</div>
                     <div class="chat-msg-content">
-                        <div class="chat-msg-text">${this.formatMessage(data.reply)}</div>
+                        <div class="chat-msg-bubble">${this.formatBotReply(data.reply)}</div>
                         <div class="chat-msg-time">${timeStr}</div>
                     </div>
                 `;
@@ -1896,6 +2335,9 @@ class LikApp {
 
             // Perform face mood and BLE motor movements
             this.handleAIResponse(data);
+            
+            // Show subtitle on the face screen
+            this.showFaceSubtitle(data.reply);
 
         } catch (err) {
             console.error('[Vision] Analysis Failed:', err);
