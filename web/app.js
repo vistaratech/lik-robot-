@@ -734,44 +734,77 @@ class LikApp {
             });
         }
 
-        // Helper to bind D-pad actions (hold to drive, release to stop)
-        const bindDpadAction = (btnId, direction) => {
+        // Helper to bind RC Transmitter controls (Simultaneous Throttle & Steering tracking)
+        this.activeThrottle = 'center';
+        this.activeSteering = 'center';
+
+        const updateControlState = () => {
+            const t = this.activeThrottle;
+            const s = this.activeSteering;
+            let dir = 'center';
+            
+            if (t === 'forward') {
+                if (s === 'left') dir = 'forward-left';
+                else if (s === 'right') dir = 'forward-right';
+                else dir = 'forward';
+            } else if (t === 'backward') {
+                if (s === 'left') dir = 'backward-left';
+                else if (s === 'right') dir = 'backward-right';
+                else dir = 'backward';
+            } else { // t === 'center'
+                if (s === 'left') dir = 'left';
+                else if (s === 'right') dir = 'right';
+                else dir = 'center';
+            }
+            this.sendMotorCommand(dir, this.maxSpeed);
+        };
+
+        const bindButton = (btnId, type, activeValue) => {
             const btn = document.getElementById(btnId);
             if (!btn) return;
 
-            const startMove = (e) => {
+            const handlePress = (e) => {
                 e.preventDefault();
                 btn.classList.add('active');
-                this.sendMotorCommand(direction, this.maxSpeed);
+                if (type === 'throttle') this.activeThrottle = activeValue;
+                if (type === 'steering') this.activeSteering = activeValue;
+                updateControlState();
             };
 
-            const stopMove = (e) => {
+            const handleRelease = (e) => {
                 e.preventDefault();
                 btn.classList.remove('active');
-                this.sendMotorCommand('center', 0);
+                if (type === 'throttle' && this.activeThrottle === activeValue) {
+                    this.activeThrottle = 'center';
+                }
+                if (type === 'steering' && this.activeSteering === activeValue) {
+                    this.activeSteering = 'center';
+                }
+                updateControlState();
             };
 
-            btn.addEventListener('mousedown', startMove);
-            btn.addEventListener('touchstart', startMove, { passive: false });
-            
-            btn.addEventListener('mouseup', stopMove);
-            btn.addEventListener('mouseleave', stopMove);
-            btn.addEventListener('touchend', stopMove);
+            btn.addEventListener('mousedown', handlePress);
+            btn.addEventListener('touchstart', handlePress, { passive: false });
+            btn.addEventListener('mouseup', handleRelease);
+            btn.addEventListener('mouseleave', handleRelease);
+            btn.addEventListener('touchend', handleRelease);
         };
 
-        // Bind directions
-        bindDpadAction('rc-btn-up', 'forward');
-        bindDpadAction('rc-btn-down', 'backward');
-        bindDpadAction('rc-btn-left', 'left');
-        bindDpadAction('rc-btn-right', 'right');
+        // Bind Throttle & Steering sticks
+        bindButton('rc-btn-up', 'throttle', 'forward');
+        bindButton('rc-btn-down', 'throttle', 'backward');
+        bindButton('rc-btn-left', 'steering', 'left');
+        bindButton('rc-btn-right', 'steering', 'right');
 
-        // Stop button (explicit click stop)
+        // Stop button (emergency stop)
         const stopBtn = document.getElementById('rc-btn-stop');
         if (stopBtn) {
             const handleStop = (e) => {
                 e.preventDefault();
                 stopBtn.classList.add('active');
                 setTimeout(() => stopBtn.classList.remove('active'), 250);
+                this.activeThrottle = 'center';
+                this.activeSteering = 'center';
                 this.sendMotorCommand('center', 0);
                 if (this.connected) {
                     ble.stop();
