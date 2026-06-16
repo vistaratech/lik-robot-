@@ -1,31 +1,6 @@
 {
   "memories": [
     {
-      "timestamp": "2026-06-16T02:08:17.152Z",
-      "user": "I'm not a Tamil person.",
-      "bot": "No worry! தமிழ் ஒரு அழகிய மொழி. நானும் உங்களுக்குத் தெளிவாக சொல்ல வேண்டும்!"
-    },
-    {
-      "timestamp": "2026-06-16T02:15:08.488Z",
-      "user": "Hello, what's up? Tamil",
-      "bot": "இனிங்கு இருக்கிறேன்! நல்ல நாள் விடு, நண்பா!"
-    },
-    {
-      "timestamp": "2026-06-16T02:20:36.487Z",
-      "user": "Hey buddy, you can speak in Tamil.",
-      "bot": "சரி, நண்பா! நான் தமிழில் பேச முடியும்!"
-    },
-    {
-      "timestamp": "2026-06-16T02:20:53.233Z",
-      "user": "hey buddy what's the difference between hardware and software",
-      "bot": "Hardware refers to the physical parts of a computer, like the keyboard, screen, and circuit boards. Software, on the other hand, is like the instructions that tell the hardware what to do, like the operating system, apps, and programs. Think of hardware like your body and software like your brain!"
-    },
-    {
-      "timestamp": "2026-06-16T02:22:01.051Z",
-      "user": "Can you dance?",
-      "bot": "ஆமாம், நான் நடனமாட முடியும்!"
-    },
-    {
       "timestamp": "2026-06-16T02:22:11.828Z",
       "user": "Dance please.",
       "bot": "ஆமாம், நான் நடனமாட முடியும்!"
@@ -99,6 +74,31 @@
       "timestamp": "2026-06-16T02:48:16.463Z",
       "user": "5000*4000",
       "bot": "5000 * 4000 = 20,000,000"
+    },
+    {
+      "timestamp": "2026-06-16T03:20:42.023Z",
+      "user": "Hey buddy, what's up?",
+      "bot": "இனிங்கு இருக்கிறேன்! நல்ல நாள் விடு, நண்பா!"
+    },
+    {
+      "timestamp": "2026-06-16T03:22:20.217Z",
+      "user": "I'm going to go to the next one.",
+      "bot": "You're moving on to the next one! What's the next topic you'd like to explore?"
+    },
+    {
+      "timestamp": "2026-06-16T03:27:01.380Z",
+      "user": "hey buddy what's up",
+      "bot": "இனிங்கு இருக்கிறேன்! நல்ல நாள் விடு, நண்பா!"
+    },
+    {
+      "timestamp": "2026-06-16T03:27:16.842Z",
+      "user": "Tamil can you speak English?",
+      "bot": "Yes, I can speak English! How can I help you today?"
+    },
+    {
+      "timestamp": "2026-06-16T03:27:31.468Z",
+      "user": "morning",
+      "bot": "Good morning! Have a great day!"
     }
   ],
   "settings": {}

@@ -1289,17 +1289,21 @@ class LikApp {
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // Scale dynamically based on canvas dimensions to support smaller visualizers
+            const heightRatio = canvas.clientHeight > 0 ? (canvas.clientHeight / 65) : 1;
+            const freqScale = canvas.clientWidth > 0 ? (280 / canvas.clientWidth) : 1;
+
             // Draw glowing golden waves matching LIK's design
-            ctx.lineWidth = 3;
-            ctx.shadowBlur = 10;
+            ctx.lineWidth = Math.max(1.5, 3 * heightRatio);
+            ctx.shadowBlur = Math.max(4, 10 * heightRatio);
             
             const time = Date.now() * 0.004;
 
             // Draw 3 layers of waves for rich visual aesthetics
             const waves = [
-                { amplitude: 22, color: 'rgba(253, 150, 68, 0.75)', speed: 1.0, freq: 0.05 },
-                { amplitude: 14, color: 'rgba(254, 202, 87, 0.45)', speed: -1.5, freq: 0.03 },
-                { amplitude: 8, color: 'rgba(255, 255, 255, 0.25)', speed: 2.0, freq: 0.08 }
+                { amplitude: 22 * heightRatio, color: 'rgba(253, 150, 68, 0.75)', speed: 1.0, freq: 0.05 },
+                { amplitude: 14 * heightRatio, color: 'rgba(254, 202, 87, 0.45)', speed: -1.5, freq: 0.03 },
+                { amplitude: 8 * heightRatio, color: 'rgba(255, 255, 255, 0.25)', speed: 2.0, freq: 0.08 }
             ];
 
             waves.forEach(w => {
@@ -1310,7 +1314,8 @@ class LikApp {
                 for (let x = 0; x < canvas.width; x++) {
                     const index = Math.floor((x / canvas.width) * bufferLength);
                     const micVal = (dataArray[index] - 128) / 128;
-                    const angle = x * w.freq + time * w.speed;
+                    const cssX = x / window.devicePixelRatio;
+                    const angle = cssX * w.freq * freqScale + time * w.speed;
                     const envelope = Math.sin((x / canvas.width) * Math.PI);
                     
                     const y = (canvas.height / 2) + 
