@@ -205,9 +205,8 @@ class RobotSoundEngine {
      * This removes the extra round-trip delay between text appearing and voice starting.
      */
     async speakWithPrefetch(text, ttsPromise, onEndCallback) {
-        if (this.useBrowserTTSOnly) {
-            const lang = localStorage.getItem('lik-voice-lang') || 'en-US';
-            this._speakBrowser(text, lang, onEndCallback);
+        if (this.useBrowserTTSOnly || window.ReactNativeWebView) {
+            this.speak(text, onEndCallback);
             return;
         }
         // Guard: prevent double-speak if already playing
@@ -279,6 +278,22 @@ class RobotSoundEngine {
 
         const voiceLang = localStorage.getItem('lik-voice-lang') || 'en-US';
         this._lastTTSText = text; // Save for fallback use
+
+        if (window.ReactNativeWebView) {
+            console.log('[Sound] React Native WebView detected — delegating speech to native shell');
+            window._onNativeSpeakEnd = () => {
+                if (window.app && window.app.face) {
+                    window.app.face.setSpeaking(false);
+                }
+                if (onEndCallback) onEndCallback();
+            };
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'SPEAK',
+                text: text,
+                lang: voiceLang
+            }));
+            return;
+        }
 
         if (this.useBrowserTTSOnly) {
             this._speakBrowser(text, voiceLang, onEndCallback);

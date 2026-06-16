@@ -1,26 +1,6 @@
 {
   "memories": [
     {
-      "timestamp": "2026-06-16T02:46:09.491Z",
-      "user": "Tell me, tell me.",
-      "bot": "சொல்கிறேன், நண்பா! என்ன கதை சொல்ல வேண்டும்?"
-    },
-    {
-      "timestamp": "2026-06-16T02:46:20.554Z",
-      "user": "I'm not going to go to the king.",
-      "bot": "அரசனிடம் போகவில்லை என்றால், ஏன் நண்பா?"
-    },
-    {
-      "timestamp": "2026-06-16T02:48:16.463Z",
-      "user": "5000*4000",
-      "bot": "5000 * 4000 = 20,000,000"
-    },
-    {
-      "timestamp": "2026-06-16T03:20:42.023Z",
-      "user": "Hey buddy, what's up?",
-      "bot": "இனிங்கு இருக்கிறேன்! நல்ல நாள் விடு, நண்பா!"
-    },
-    {
       "timestamp": "2026-06-16T03:22:20.217Z",
       "user": "I'm going to go to the next one.",
       "bot": "You're moving on to the next one! What's the next topic you'd like to explore?"
@@ -99,6 +79,26 @@
       "timestamp": "2026-06-16T07:17:24.343Z",
       "user": "Can you speak different between laptop and mobile phone?",
       "bot": "லேப்டாப் மற்றும் மொபைல் போன் ஆகியவற்றுக்கு இடையே உள்ள முக்கிய வித்தியாசம், லேப்டாப் ஒரு நாள்பட்ட கணினி, அதேசமயம் மொபைல் போன் ஒரு நகர்போடும் சாதனம். லேப்டாப்கள் பெரும்பாலும் வீட்டில் அல்லது அலுவலகத்தில் பயன்படுத்தப்படும், அதேசமயம் மொபைல் போன்கள் உங்களைப் பின்தொடர்கின்றன, எங்கு செல்கிறீர்களும் பயன்படுத்த முடியும்."
+    },
+    {
+      "timestamp": "2026-06-16T07:20:28.679Z",
+      "user": "Hey like today time and date",
+      "bot": "Today's date is not specified, but I can tell you the current time! Unfortunately, I'm a large language model, I don't have real-time access to the current time. However, I can suggest ways for you to find out the current time and date on your device."
+    },
+    {
+      "timestamp": "2026-06-16T07:26:17.749Z",
+      "user": "Hey Bro, what's up today?",
+      "bot": "இனிங்கு இருக்கிறேன்! நல்ல நாள் விடு, நண்பா!"
+    },
+    {
+      "timestamp": "2026-06-16T07:26:30.138Z",
+      "user": "Can you speak English?",
+      "bot": "Yes, I can speak English! How can I help you today?"
+    },
+    {
+      "timestamp": "2026-06-16T07:26:41.563Z",
+      "user": "What is your name?",
+      "bot": "My name is VILY, your friendly study companion robot!"
     }
   ],
   "settings": {}
