@@ -18,10 +18,15 @@ class LikApp {
         this.threeView = null;
         this.theme = 'dark';
         this.pongGame = null;
+        this.rpsHands = null;
+        this.rpsDetectInterval = null;
+        this.rpsGameoverTimeout = null;
         this.simonGame = null;
         this.rcStream = null;
         this.headlightOn = false;
         this.studyTools = null;
+        this.activeActionInterval = null;
+        this.activeActionTimeout = null;
         let savedProvider = localStorage.getItem('lik-ai-provider');
         // Default to 'gemini' (best TTS + fastest chat) if not set
         if (!savedProvider) {
@@ -43,6 +48,17 @@ class LikApp {
         this.isScanning = false;
         this.isInitialBoot = true;
         
+        // ═══════ NEW MODE STATE VARIABLES ═══════
+        this.pomodoroInterval = null;
+        this.pomodoroTimeLeft = 0;
+        this.pomodoroState = 'focus'; // 'focus' or 'break'
+        this.djMicStream = null;
+        this.djAudioCtx = null;
+        this.djInterval = null;
+        
+        // ═══════ AUTONOMOUS PATROL ═══════
+        this.patrol = null;  // AutonomousPatrol instance
+        
         this.init();
     }
     
@@ -55,6 +71,9 @@ class LikApp {
         this.setupRC();
         this.setupSettings();
         this.setupChat();
+        this.setupActionShortcuts();
+        this.setupNewModes();
+        this.setupPatrol();
         this.updateMoodLabel();
         
         // Initialize Lucide Icons
@@ -610,6 +629,10 @@ class LikApp {
             this.updateBatteryUI(-1);
             this.showToast('Disconnected from LIK');
             this.face.setMood('sad');
+            // Pause patrol on disconnect
+            if (this.patrol && this.patrol.active) {
+                this.patrol.pause('Disconnected');
+            }
         };
         
         ble.onBattery = (percent) => {
@@ -619,6 +642,22 @@ class LikApp {
         
         ble.onMotorStatus = () => {};
         ble.onLog = () => {};
+        
+        // Cliff detection callback — autonomous patrol safety
+        ble.onCliffDetected = (cliffCode) => {
+            console.log(`[CLIFF] Received cliff event: 0x${cliffCode.toString(16)}`);
+            if (this.patrol && this.patrol.active) {
+                this.patrol.handleCliffEvent(cliffCode);
+            }
+            // Flash face surprise
+            if (this.face) {
+                this.face.setMood('surprised', 2000);
+                this.updateMoodLabel();
+            }
+            const side = cliffCode === 0x03 ? 'BOTH' : cliffCode === 0x01 ? 'LEFT' : 'RIGHT';
+            this.showToast(`⚠️ Cliff detected (${side})! Auto-reversing...`);
+            if (typeof soundEngine !== 'undefined') soundEngine.playBeep(880, 200, 'square', 0.3);
+        };
         
         // Connect button in modal
         document.getElementById('modal-connect-btn').addEventListener('click', () => this.connectBLE());
@@ -807,6 +846,7 @@ class LikApp {
                 this.activeSteering = 'center';
                 this.sendMotorCommand('center', 0);
                 if (this.connected) {
+                    this.clearActionTimers();
                     ble.stop();
                     ble.stopAnimation();
                 }
@@ -893,6 +933,17 @@ class LikApp {
         const modelSelect = document.getElementById('gemini-model-select');
         if (modelSelect) {
             modelSelect.value = localStorage.getItem('lik-gemini-model') || 'gemini-2.5-flash';
+        }
+
+        // Initialize voice tone dropdown selection
+        const voiceToneSelect = document.getElementById('setting-voice-tone');
+        if (voiceToneSelect) {
+            voiceToneSelect.value = localStorage.getItem('lik-voice-tone') || 'Puck';
+            voiceToneSelect.addEventListener('change', () => {
+                const val = voiceToneSelect.value;
+                localStorage.setItem('lik-voice-tone', val);
+                this.showToast(`Robot voice tone updated to: ${val}`);
+            });
         }
 
         // Voice Language selection
@@ -1223,6 +1274,747 @@ class LikApp {
             this.speechRecog.start();
         } catch(err) {
             console.warn('[Speech] startSpeechRecognition failed:', err);
+        }
+    }
+
+    setupActionShortcuts() {
+        const actionButtons = document.querySelectorAll('.face-actions-container .face-action-btn');
+        actionButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = btn.getAttribute('data-action');
+                if (action) {
+                    this.executeAction(action);
+                }
+            });
+        });
+    }
+
+    executeAction(actionName) {
+        const act = actionName.toLowerCase();
+        
+        if (act === 'dog') {
+            if (this.face) {
+                // Clear any other active modes first before entering dog mode
+                this.cleanupActiveModes();
+                
+                this.face.dogMode = !this.face.dogMode;
+                const isDog = this.face.dogMode;
+                
+                const dogBtn = document.getElementById('dog-mode-btn');
+                if (dogBtn) {
+                    if (isDog) {
+                        dogBtn.classList.add('active');
+                        dogBtn.style.color = '#00b894';
+                        dogBtn.style.borderColor = '#00b894';
+                        dogBtn.style.boxShadow = '0 0 15px rgba(0, 184, 148, 0.4)';
+                    } else {
+                        dogBtn.classList.remove('active');
+                        dogBtn.style.color = '';
+                        dogBtn.style.borderColor = '';
+                        dogBtn.style.boxShadow = '';
+                    }
+                }
+                
+                if (isDog) {
+                    this.face.setMood('excited', 10000);
+                    if (typeof soundEngine !== 'undefined') {
+                        soundEngine.playMoodSound('bark');
+                    }
+                    this.showToast('🐶 Dog Mode ON! Woof woof!');
+                    
+                    if (this.connected) {
+                        this.clearActionTimers();
+                        const playDogBehaviors = () => {
+                            ble.playAnimation(0x03);
+                            if (typeof soundEngine !== 'undefined') {
+                                soundEngine.playMoodSound('bark');
+                            }
+                        };
+                        playDogBehaviors();
+                        this.activeActionInterval = setInterval(playDogBehaviors, 3000);
+                        
+                        this.activeActionTimeout = setTimeout(() => {
+                            this.clearActionTimers();
+                            if (this.connected) ble.stop();
+                        }, 10000);
+                    }
+                } else {
+                    this.face.setMood('happy', 3000);
+                    this.showToast('🤖 Robot Mode active!');
+                    this.clearActionTimers();
+                    if (this.connected) {
+                        ble.stop();
+                    }
+                }
+                this.updateMoodLabel();
+            }
+            return;
+        }
+
+        // Clean up any running visual modes for new animations (except simple picker/themes)
+        if (act !== 'colors' && act !== 'emotions') {
+            this.cleanupActiveModes();
+        }
+
+        // Show command label on face canvas
+        if (this.face) {
+            this.face.showCommand(act.toUpperCase(), 10000);
+        }
+
+        // 1. Face animations
+        if (this.face) {
+            if (act === 'dance') {
+                this.face.setMood('excited', 10000);
+                this.triggerDanceAnimation(10.0);
+            } else if (act === 'nod') {
+                this.face.setMood('eureka', 10000);
+                this.face.playNod();
+            } else if (act === 'shake') {
+                this.face.setMood('confused', 10000);
+                this.face.playShake();
+            } else if (act === 'excited') {
+                this.face.setMood('excited', 10000);
+            } else if (act === 'shy') {
+                this.face.setMood('shy', 10000);
+            } else if (act === 'curious') {
+                this.face.setMood('curious', 10000);
+            }
+            
+            // --- NEW MODES IMPLEMENTATION ---
+            else if (act === 'karaoke') {
+                this.face.startKaraoke();
+                this.showToast('🎤 Karaoke Mode ON! Sing along!');
+                if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('karaoke');
+            } 
+            else if (act === 'sleep') {
+                this.face.startSleepMode();
+                this.face.setMood('sleepy', 0, false, true);
+                document.getElementById('sleep-mode-btn')?.classList.add('active');
+                this.showToast('😴 Sleep mode active. Goodnight ZZZ...');
+                if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('sleep');
+            } 
+            else if (act === 'love') {
+                this.face.startLoveMode();
+                this.face.setMood('love', 0, false, true);
+                this.showToast('❤️ Spread the love! Feeling loved!');
+                if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('love');
+            } 
+            else if (act === 'pong') {
+                this.face.startPong();
+                document.getElementById('pong-score-overlay')?.classList.add('show');
+                document.getElementById('pong-mode-btn')?.classList.add('active');
+                this.showToast('🕹️ Pong Game Started! Move cursor/drag screen to steer!');
+                if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('pong_score');
+            } 
+            else if (act === 'rps') {
+                this.startRPSGame();
+            } 
+            else if (act === 'colors') {
+                const themeName = this.face.cycleColor();
+                this.showToast(`🎨 Color Theme Swapped to: ${themeName}`);
+                if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('color_cycle');
+            } 
+            else if (act === 'emotions') {
+                document.getElementById('emotion-wheel-overlay')?.classList.add('show');
+            } 
+            else if (act === 'photo') {
+                this.face.startPhotoMode();
+                this.showToast('📸 Say cheese! 3... 2... 1...');
+                setTimeout(() => {
+                    if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('photo_shutter');
+                    if (this.face) this.face.triggerPhotoFlash();
+                    
+                    // Take screenshot of canvas
+                    setTimeout(() => {
+                        const canvas = document.getElementById('face-canvas');
+                        if (canvas) {
+                            const link = document.createElement('a');
+                            link.download = 'lik_robot_selfie.png';
+                            link.href = canvas.toDataURL('image/png');
+                            link.click();
+                            this.showToast('💾 Selfie saved to your downloads!');
+                        }
+                        this.cleanupActiveModes();
+                        if (this.face) this.face.setMood('happy', 3000);
+                        this.updateMoodLabel();
+                    }, 100);
+                }, 3000);
+            } 
+            else if (act === 'story') {
+                this.face.startStoryMode();
+                this.showToast('🎭 Robot Story Mode started!');
+                if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('story_start');
+            } 
+            else if (act === 'pomodoro') {
+                this.face.isPomodoroMode = true;
+                this.face.setMood('focused', 0, false, true);
+                document.getElementById('pomodoro-overlay')?.classList.add('show');
+                document.getElementById('pomodoro-mode-btn')?.classList.add('active');
+                this.pomodoroTimeLeft = 25 * 60; // 25 minutes
+                this.pomodoroState = 'focus';
+                this.showToast('🍅 Focus session started for 25 minutes! You got this!');
+                
+                const timerText = document.getElementById('pomodoro-timer-text');
+                const labelText = document.getElementById('pomodoro-label');
+                if (timerText) timerText.textContent = '25:00';
+                if (labelText) labelText.textContent = 'FOCUS TIME';
+
+                this.pomodoroInterval = setInterval(() => {
+                    this.pomodoroTimeLeft--;
+                    if (this.pomodoroTimeLeft <= 0) {
+                        if (this.pomodoroState === 'focus') {
+                            this.pomodoroState = 'break';
+                            this.pomodoroTimeLeft = 5 * 60; // 5 mins
+                            if (labelText) labelText.textContent = 'BREAK TIME';
+                            if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('pomodoro_break');
+                            if (this.face) this.face.setMood('sleepy', 0, false, true);
+                            this.showToast('☕ Take a 5-minute break!');
+                        } else {
+                            this.stopPomodoro();
+                            if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('pomodoro_alarm');
+                            this.showToast('🔔 Session complete! Great job!');
+                        }
+                    }
+                    const mins = Math.floor(this.pomodoroTimeLeft / 60).toString().padStart(2, '0');
+                    const secs = (this.pomodoroTimeLeft % 60).toString().padStart(2, '0');
+                    if (timerText) timerText.textContent = `${mins}:${secs}`;
+                }, 1000);
+            } 
+            else if (act === 'dj') {
+                document.getElementById('dj-mode-btn')?.classList.add('active');
+                this.showToast('🎵 DJ Mode Active! Visualizing audio levels...');
+                if (typeof soundEngine !== 'undefined') soundEngine.playMoodSound('dj_drop');
+                
+                // Get microphone
+                navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+                    .then(stream => {
+                        this.djMicStream = stream;
+                        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                        this.djAudioCtx = new AudioContextClass();
+                        const source = this.djAudioCtx.createMediaStreamSource(stream);
+                        const analyser = this.djAudioCtx.createAnalyser();
+                        analyser.fftSize = 64;
+                        source.connect(analyser);
+                        
+                        const bufferLength = analyser.frequencyBinCount;
+                        const dataArray = new Uint8Array(bufferLength);
+                        
+                        if (this.face) {
+                            this.face.startDJMode(analyser, dataArray);
+                        }
+                    })
+                    .catch(err => {
+                        console.warn('[DJ] Microphone access denied, running visual simulation.', err);
+                        if (this.face) {
+                            this.face.startDJMode(null, null); // Fallback simulated EQ
+                        }
+                    });
+            }
+
+            this.updateMoodLabel();
+        }
+
+        // 2. Physical BLE execution
+        if (this.connected) {
+            this.clearActionTimers();
+
+            const playCmd = () => {
+                if (act === 'dance' || act === 'karaoke' || act === 'dj') ble.playAnimation(0x03); // Dance
+                else if (act === 'nod' || act === 'pomodoro' || act === 'photo') ble.playAnimation(0x02); // Nod
+                else if (act === 'shake') ble.playAnimation(0x01); // Shake
+                else if (act === 'excited' || act === 'love') ble.playAnimation(0x04); // Excited
+                else if (act === 'shy' || act === 'sleep') ble.playAnimation(0x05); // Shy/Sleepy
+                else if (act === 'forward') ble.moveForward(this.maxSpeed);
+                else if (act === 'backward') ble.moveBackward(this.maxSpeed);
+                else if (act === 'left') ble.spinLeft(this.maxSpeed);
+                else if (act === 'right') ble.spinRight(this.maxSpeed);
+                else if (act === 'stop') ble.stop();
+            };
+
+            // Play initially
+            playCmd();
+
+            // Set up repetition for short animation cycles to fill the window
+            let repeatInterval = 0;
+            if (act === 'dance' || act === 'karaoke' || act === 'dj') repeatInterval = 2200; // Dance keyframes are ~2.3s
+            else if (act === 'excited' || act === 'love') repeatInterval = 1200; // Excited keyframes are ~1.3s
+            else if (act === 'nod') repeatInterval = 750; // Nod is ~0.8s
+            else if (act === 'shake') repeatInterval = 650; // Shake is ~0.7s
+            else if (act === 'shy' || act === 'sleep') repeatInterval = 1450; // Shy is ~1.5s
+
+            if (repeatInterval > 0) {
+                this.activeActionInterval = setInterval(() => {
+                    if (this.connected) playCmd();
+                }, repeatInterval);
+            }
+
+            // Stop simple actions after 10 seconds (Persistent modes stay active until manually cancelled)
+            const isPersistent = ['sleep', 'pong', 'dj', 'pomodoro', 'rps'].includes(act);
+            const isColorOrEmotion = ['colors', 'emotions'].includes(act);
+            
+            if (isColorOrEmotion) {
+                // Play once, clear repeat interval immediately
+                if (this.activeActionInterval) {
+                    clearInterval(this.activeActionInterval);
+                }
+            } else if (!isPersistent) {
+                let duration = 10000;
+                if (act === 'story') {
+                    duration = 28000; // Let the entire 28s story finish
+                }
+                this.activeActionTimeout = setTimeout(() => {
+                    this.clearActionTimers();
+                    if (this.connected) {
+                        ble.stop();
+                        ble.stopAnimation();
+                    }
+                }, duration);
+            }
+        } else {
+            this.showToast(`Action "${act}" played locally (Connect Bluetooth to move robot)`);
+        }
+    }
+
+    clearActionTimers() {
+        if (this.activeActionInterval) {
+            clearInterval(this.activeActionInterval);
+            this.activeActionInterval = null;
+        }
+        if (this.activeActionTimeout) {
+            clearTimeout(this.activeActionTimeout);
+            this.activeActionTimeout = null;
+        }
+    }
+
+    setupNewModes() {
+        // Pomodoro Close
+        const pomodoroStopBtn = document.getElementById('pomodoro-stop-btn');
+        if (pomodoroStopBtn) {
+            pomodoroStopBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.stopPomodoro();
+            });
+        }
+
+        // Pong Exit
+        const pongExitBtn = document.getElementById('pong-exit-btn');
+        if (pongExitBtn) {
+            pongExitBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.stopPongGame();
+            });
+        }
+
+        // RPS Exit
+        const rpsExitBtn = document.getElementById('rps-exit-btn');
+        if (rpsExitBtn) {
+            rpsExitBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.stopRPSGame();
+            });
+        }
+
+        // Emotion Wheel Picker
+        const emotionItems = document.querySelectorAll('.emotion-item');
+        emotionItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const emotion = item.getAttribute('data-emotion');
+                if (emotion && this.face) {
+                    this.face.setMood(emotion, 10000);
+                    this.updateMoodLabel();
+                    this.showToast(`Robot feeling: ${this.face.getMoodLabel()}!`);
+                    document.getElementById('emotion-wheel-overlay')?.classList.remove('show');
+                }
+            });
+        });
+
+        const emotionWheelClose = document.getElementById('emotion-wheel-close');
+        if (emotionWheelClose) {
+            emotionWheelClose.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.getElementById('emotion-wheel-overlay')?.classList.remove('show');
+            });
+        }
+
+        // Keyboard Pong Controls
+        window.addEventListener('keydown', (e) => {
+            if (this.face && this.face.isPongMode) {
+                if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                    e.preventDefault();
+                    this.face.targetPupilY = Math.max(-0.9, this.face.targetPupilY - 0.18);
+                } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                    e.preventDefault();
+                    this.face.targetPupilY = Math.min(0.9, this.face.targetPupilY + 0.18);
+                }
+            }
+        });
+    }
+
+    // ─────────────────────────────────────
+    //  Autonomous Patrol Setup
+    // ─────────────────────────────────────
+    
+    setupPatrol() {
+        // Create patrol engine instance
+        this.patrol = new AutonomousPatrol(this);
+        
+        // Patrol toggle button
+        const toggleBtn = document.getElementById('patrol-toggle-btn');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                
+                // If patrol is paused (e.g. after disconnect), resume
+                if (this.patrol.active && this.patrol.paused && this.connected) {
+                    this.patrol.resume();
+                    return;
+                }
+                
+                this.patrol.toggle();
+            });
+        }
+        
+        // Pattern chip selectors
+        document.querySelectorAll('.patrol-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const pattern = chip.dataset.pattern;
+                if (!pattern) return;
+                
+                // Update active chip
+                document.querySelectorAll('.patrol-chip').forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                
+                this.patrol.pattern = pattern;
+                
+                // If currently patrolling, restart with new pattern
+                if (this.patrol.active && !this.patrol.paused) {
+                    this.patrol.stop();
+                    setTimeout(() => this.patrol.start(), 300);
+                }
+            });
+        });
+        
+        // Patrol speed slider
+        const patrolSpeedSlider = document.getElementById('patrol-speed-slider');
+        const patrolSpeedVal = document.getElementById('patrol-speed-val');
+        if (patrolSpeedSlider) {
+            patrolSpeedSlider.addEventListener('input', (e) => {
+                const pct = parseInt(e.target.value);
+                this.patrol.speed = pct;
+                if (patrolSpeedVal) patrolSpeedVal.textContent = `${pct}%`;
+            });
+        }
+    }
+
+    stopPomodoro() {
+        if (this.pomodoroInterval) {
+            clearInterval(this.pomodoroInterval);
+            this.pomodoroInterval = null;
+        }
+        document.getElementById('pomodoro-overlay')?.classList.remove('show');
+        if (this.face) {
+            this.face.isPomodoroMode = false;
+            this.face.setMood('happy', 3000);
+        }
+        this.showToast('🍅 Pomodoro Timer Stopped!');
+        this.updateMoodLabel();
+        
+        // Remove active state from button
+        document.getElementById('pomodoro-mode-btn')?.classList.remove('active');
+    }
+
+    stopPongGame() {
+        if (this.face) {
+            this.face.stopPong();
+            this.face.setMood('happy', 3000);
+        }
+        document.getElementById('pong-score-overlay')?.classList.remove('show');
+        this.showToast('🕹️ Pong Game Over!');
+        this.updateMoodLabel();
+        
+        // Remove active state from button
+        document.getElementById('pong-mode-btn')?.classList.remove('active');
+    }
+
+    // ─── RPS Game ───
+    async startRPSGame() {
+        // Start camera
+        const camOk = await this.startVisionCamera();
+        if (!camOk) {
+            this.showToast('⚠️ Camera required for Rock Paper Scissors!');
+            return;
+        }
+        
+        // Start face RPS mode
+        this.face.startRPS();
+        document.getElementById('rps-overlay')?.classList.add('show');
+        document.getElementById('rps-mode-btn')?.classList.add('active');
+        this.showToast('✌️ Rock Paper Scissors! Show your hand to the camera!');
+        
+        // Initialize MediaPipe Hands (if available)
+        this._initRPSHandDetection();
+        
+        // Monitor for gameover
+        this._monitorRPSGameover();
+    }
+    
+    _initRPSHandDetection() {
+        // Use MediaPipe Hands if loaded from CDN
+        if (typeof Hands !== 'undefined') {
+            try {
+                this.rpsHands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+                this.rpsHands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 0, // Fastest model
+                    minDetectionConfidence: 0.6,
+                    minTrackingConfidence: 0.5
+                });
+                
+                this.rpsHands.onResults((results) => {
+                    this._onRPSHandResults(results);
+                });
+                
+                // Start detection loop when face enters 'detect' phase
+                this.rpsDetectInterval = setInterval(() => {
+                    if (this.face && this.face.isRPSMode && this.face.rpsPhase === 'detect' && !this.face.rpsPlayerChoice) {
+                        const video = document.getElementById('vision-video');
+                        if (video && video.readyState >= 2 && this.rpsHands) {
+                            this.rpsHands.send({ image: video }).catch(() => {});
+                        }
+                    }
+                }, 300);
+                
+                console.log('[RPS] MediaPipe Hands initialized');
+            } catch (err) {
+                console.warn('[RPS] MediaPipe init failed, using fallback:', err);
+                this._initRPSFallbackDetection();
+            }
+        } else {
+            console.log('[RPS] MediaPipe not available, using canvas fallback');
+            this._initRPSFallbackDetection();
+        }
+    }
+    
+    _initRPSFallbackDetection() {
+        // Fallback: Simple skin-color pixel counting from camera frame
+        // More skin pixels = open hand (paper), less = fist (rock), medium = scissors
+        this.rpsDetectInterval = setInterval(() => {
+            if (this.face && this.face.isRPSMode && this.face.rpsPhase === 'detect' && !this.face.rpsPlayerChoice) {
+                const video = document.getElementById('vision-video');
+                if (video && video.readyState >= 2) {
+                    this._detectGestureFallback(video);
+                }
+            }
+        }, 500);
+    }
+    
+    _onRPSHandResults(results) {
+        if (!this.face || !this.face.isRPSMode || this.face.rpsPhase !== 'detect' || this.face.rpsPlayerChoice) return;
+        
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+            const landmarks = results.multiHandLandmarks[0];
+            const gesture = this._classifyHandGesture(landmarks);
+            if (gesture) {
+                this.face.rpsSetPlayerChoice(gesture);
+                this.showToast(`You showed: ${this.face.rpsEmojis[gesture]} ${gesture.toUpperCase()}`);
+            }
+        }
+    }
+    
+    _classifyHandGesture(landmarks) {
+        // Count extended fingers using landmark positions
+        // Finger tip landmarks: thumb=4, index=8, middle=12, ring=16, pinky=20
+        // Finger PIP landmarks: thumb=3, index=6, middle=10, ring=14, pinky=18
+        let extendedFingers = 0;
+        
+        // Thumb: compare x position (tip vs IP joint) - different axis for thumb
+        const thumbTip = landmarks[4];
+        const thumbIP = landmarks[3];
+        const wrist = landmarks[0];
+        // Check if hand is right or left by comparing wrist to middle finger MCP
+        const isRightHand = landmarks[17].x < wrist.x;
+        if (isRightHand) {
+            if (thumbTip.x < thumbIP.x) extendedFingers++;
+        } else {
+            if (thumbTip.x > thumbIP.x) extendedFingers++;
+        }
+        
+        // Other fingers: compare y position (tip should be above PIP when extended)
+        const fingerTips = [8, 12, 16, 20];
+        const fingerPIPs = [6, 10, 14, 18];
+        for (let i = 0; i < 4; i++) {
+            if (landmarks[fingerTips[i]].y < landmarks[fingerPIPs[i]].y) {
+                extendedFingers++;
+            }
+        }
+        
+        // Classify: 0-1 fingers = rock, 2 fingers = scissors, 3-5 fingers = paper
+        if (extendedFingers <= 1) return 'rock';
+        if (extendedFingers === 2) return 'scissors';
+        return 'paper';
+    }
+    
+    _detectGestureFallback(video) {
+        // Simple fallback: capture frame, count skin-colored pixels
+        const canvas = document.createElement('canvas');
+        canvas.width = 160;
+        canvas.height = 120;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, 160, 120);
+        const imageData = ctx.getImageData(0, 0, 160, 120);
+        const data = imageData.data;
+        
+        let skinPixels = 0;
+        const totalPixels = 160 * 120;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i+1], b = data[i+2];
+            // Simple skin color detection (works for various skin tones)
+            if (r > 80 && g > 40 && b > 20 && r > g && r > b && (r - g) > 15 && Math.abs(r - g) < 100) {
+                skinPixels++;
+            }
+        }
+        
+        const skinRatio = skinPixels / totalPixels;
+        
+        // Classify based on skin pixel ratio
+        let gesture;
+        if (skinRatio > 0.15) gesture = 'paper';      // Open hand = lots of skin
+        else if (skinRatio > 0.06) gesture = 'scissors'; // Partial = scissors
+        else gesture = 'rock';                           // Fist = less skin
+        
+        this.face.rpsSetPlayerChoice(gesture);
+        this.showToast(`You showed: ${this.face.rpsEmojis[gesture]} ${gesture.toUpperCase()}`);
+    }
+    
+    _monitorRPSGameover() {
+        // Check periodically if game has ended
+        this.rpsGameoverTimeout = setInterval(() => {
+            if (this.face && this.face.isRPSMode && this.face.rpsPhase === 'gameover' && this.face.rpsResultTimer >= 4.0) {
+                this.stopRPSGame();
+            }
+        }, 500);
+    }
+    
+    stopRPSGame() {
+        // Stop detection
+        if (this.rpsDetectInterval) {
+            clearInterval(this.rpsDetectInterval);
+            this.rpsDetectInterval = null;
+        }
+        if (this.rpsGameoverTimeout) {
+            clearInterval(this.rpsGameoverTimeout);
+            this.rpsGameoverTimeout = null;
+        }
+        
+        // Close MediaPipe
+        if (this.rpsHands) {
+            this.rpsHands.close();
+            this.rpsHands = null;
+        }
+        
+        // Stop camera
+        this.stopVisionCamera();
+        
+        // Stop face mode
+        if (this.face) {
+            // Announce final result
+            if (this.face.rpsScorePlayer > this.face.rpsScoreCpu) {
+                this.showToast('🏆 Congratulations! You won the game!');
+                this.face.setMood('excited', 3000);
+            } else if (this.face.rpsScorePlayer < this.face.rpsScoreCpu) {
+                this.showToast('🤖 LIK wins! Better luck next time!');
+                this.face.setMood('happy', 3000);
+            } else {
+                this.showToast('🤝 It\'s a tie! Great game!');
+                this.face.setMood('surprised', 3000);
+            }
+            this.face.stopRPS();
+        }
+        
+        // Hide overlay
+        document.getElementById('rps-overlay')?.classList.remove('show');
+        document.getElementById('rps-mode-btn')?.classList.remove('active');
+        this.updateMoodLabel();
+    }
+
+    cleanupActiveModes() {
+        this.clearActionTimers();
+        
+        // Stop Pomodoro if running
+        if (this.pomodoroInterval) {
+            clearInterval(this.pomodoroInterval);
+            this.pomodoroInterval = null;
+            document.getElementById('pomodoro-overlay')?.classList.remove('show');
+            document.getElementById('pomodoro-mode-btn')?.classList.remove('active');
+        }
+        
+        // Stop Pong and other modes on face
+        if (this.face) {
+            this.face.stopPong();
+            this.face.stopRPS();
+            this.face.stopSleepMode();
+            this.face.stopLoveMode();
+            this.face.stopKaraoke();
+            this.face.stopStoryMode();
+            this.face.stopDJMode();
+            this.face.stopPhotoMode();
+            this.face.isSleepMode = false;
+            this.face.isLoveMode = false;
+            this.face.isPongMode = false;
+            this.face.isRPSMode = false;
+            this.face.isPhotoMode = false;
+            this.face.isStoryMode = false;
+            this.face.isDJMode = false;
+            this.face.isKaraoke = false;
+            this.face.isPomodoroMode = false;
+        }
+        
+        // Remove button highlights
+        document.getElementById('sleep-mode-btn')?.classList.remove('active');
+        document.getElementById('pong-mode-btn')?.classList.remove('active');
+        document.getElementById('rps-mode-btn')?.classList.remove('active');
+        document.getElementById('pomodoro-mode-btn')?.classList.remove('active');
+        document.getElementById('dj-mode-btn')?.classList.remove('active');
+        
+        // Close overlays
+        document.getElementById('pong-score-overlay')?.classList.remove('show');
+        document.getElementById('rps-overlay')?.classList.remove('show');
+        document.getElementById('emotion-wheel-overlay')?.classList.remove('show');
+        
+        // Clean up RPS resources
+        if (this.rpsDetectInterval) {
+            clearInterval(this.rpsDetectInterval);
+            this.rpsDetectInterval = null;
+        }
+        if (this.rpsGameoverTimeout) {
+            clearInterval(this.rpsGameoverTimeout);
+            this.rpsGameoverTimeout = null;
+        }
+        if (this.rpsHands) {
+            this.rpsHands.close();
+            this.rpsHands = null;
+        }
+        
+        // Clean up DJ mic audio
+        if (this.djMicStream) {
+            this.djMicStream.getTracks().forEach(t => t.stop());
+            this.djMicStream = null;
+        }
+        if (this.djInterval) {
+            clearInterval(this.djInterval);
+            this.djInterval = null;
+        }
+        
+        // Stop BLE movements if connected
+        if (this.connected) {
+            ble.stop();
+            ble.stopAnimation();
         }
     }
 
@@ -2462,6 +3254,809 @@ class LikApp {
             this.isScanning = false;
             visionBtn?.classList.remove('scanning');
         }
+    }
+}
+
+// ═══════════════════════════════════════════════
+//  AI Vision Autonomous Navigation Engine
+//  Uses TensorFlow.js COCO-SSD + Visual Obstacle Grid
+// ═══════════════════════════════════════════════
+
+class VisionNavEngine {
+    constructor(app, patrol) {
+        this.app = app;
+        this.patrol = patrol;
+        this.enabled = true;
+        this.isRunning = false;
+        this.model = null;
+        this.isLoadingModel = false;
+        this.loopTimer = null;
+        
+        // Obstacle radar scores (0 to 100)
+        this.zoneL = 0;
+        this.zoneC = 0;
+        this.zoneR = 0;
+        
+        this.lastDetectedObject = null;
+        this.detectedBoxes = [];
+        this.offscreenCanvas = document.createElement('canvas');
+        this.offscreenCanvas.width = 320;
+        this.offscreenCanvas.height = 240;
+    }
+    
+    async start() {
+        if (this.isRunning) return;
+        this.isRunning = true;
+        this.updateBadge('active', '🟢 Vision Nav Active');
+        this.updateActionText('Initializing mobile camera feed & AI models...');
+        
+        // Ensure rear camera is used for forward navigation
+        if (this.app.cameraFacingMode !== 'environment') {
+            this.app.cameraFacingMode = 'environment';
+            if (this.app.visionStream) {
+                this.app.stopVisionCamera();
+            }
+        }
+        
+        // Start camera if not running
+        if (!this.app.visionStream) {
+            const camOk = await this.app.startVisionCamera();
+            if (!camOk) {
+                this.updateBadge('warning', '🔴 Camera Error');
+                this.updateActionText('Camera access denied. Falling back to blind patrol.');
+                return;
+            }
+        }
+        
+        // Load TensorFlow.js COCO-SSD model if needed
+        if (!this.model && !this.isLoadingModel) {
+            this.isLoadingModel = true;
+            this.updateBadge('active', '🟡 Loading COCO-SSD...');
+            this.updateActionText('Loading neural network object detection model...');
+            try {
+                if (typeof cocoSsd !== 'undefined') {
+                    this.model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+                    console.log('[VisionNav] COCO-SSD loaded successfully!');
+                }
+            } catch (err) {
+                console.warn('[VisionNav] COCO-SSD load error:', err);
+            } finally {
+                this.isLoadingModel = false;
+            }
+        }
+        
+        this.updateBadge('active', '🟢 Active (AI + Grid)');
+        this.updateActionText('Scanning environment for obstacles and pathways...');
+        
+        // Start processing loop (~5 FPS for vision AI and HUD rendering)
+        this.loopTimer = setInterval(() => this.processFrame(), 200);
+    }
+    
+    stop() {
+        this.isRunning = false;
+        if (this.loopTimer) {
+            clearInterval(this.loopTimer);
+            this.loopTimer = null;
+        }
+        this.updateBadge('', 'Standby');
+        this.updateActionText('Select Explore & Start Patrol to enable visual guidance.');
+        this.clearHUD();
+        this.zoneL = 0;
+        this.zoneC = 0;
+        this.zoneR = 0;
+        this.updateRadarUI();
+    }
+    
+    async processFrame() {
+        if (!this.isRunning || !this.app.visionStream) return;
+        const video = document.getElementById('vision-video');
+        if (!video || video.readyState < 2 || video.videoWidth === 0) return;
+        
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        
+        // 1. Run Computer Vision Floor Grid & Edge Density Analysis
+        const ctx = this.offscreenCanvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, 320, 240);
+        const imgData = ctx.getImageData(0, 140, 320, 100).data; // lower 40% of frame (desk ahead)
+        
+        let edgeL = 0, edgeC = 0, edgeR = 0;
+        let countL = 0, countC = 0, countR = 0;
+        
+        // Measure contrast variance (edges/obstacles/drop-offs) across Left, Center, Right zones
+        for (let y = 0; y < 100 - 1; y += 4) {
+            for (let x = 0; x < 320 - 1; x += 4) {
+                const idx = (y * 320 + x) * 4;
+                const idxRight = idx + 4;
+                const idxDown = idx + 320 * 4;
+                
+                const lum = 0.299 * imgData[idx] + 0.587 * imgData[idx+1] + 0.114 * imgData[idx+2];
+                const lumR = 0.299 * imgData[idxRight] + 0.587 * imgData[idxRight+1] + 0.114 * imgData[idxRight+2];
+                const lumD = 0.299 * imgData[idxDown] + 0.587 * imgData[idxDown+1] + 0.114 * imgData[idxDown+2];
+                
+                const edge = Math.abs(lum - lumR) + Math.abs(lum - lumD);
+                
+                if (x < 106) { edgeL += edge; countL++; }
+                else if (x < 213) { edgeC += edge; countC++; }
+                else { edgeR += edge; countR++; }
+            }
+        }
+        
+        // Normalize grid scores (baseline floor has low edge variance)
+        let scoreL = Math.min(100, Math.round((edgeL / Math.max(1, countL)) * 1.8));
+        let scoreC = Math.min(100, Math.round((edgeC / Math.max(1, countC)) * 1.8));
+        let scoreR = Math.min(100, Math.round((edgeR / Math.max(1, countR)) * 1.8));
+        
+        // 2. Run TensorFlow.js Object Detection (COCO-SSD)
+        this.detectedBoxes = [];
+        this.lastDetectedObject = null;
+        if (this.model) {
+            try {
+                const predictions = await this.model.detect(video);
+                predictions.forEach(pred => {
+                    if (pred.score < 0.45) return;
+                    const [bx, by, bw, bh] = pred.bbox;
+                    this.detectedBoxes.push(pred);
+                    
+                    // If object is in lower 70% of view (nearby on desk)
+                    if (by + bh > vh * 0.3) {
+                        const centerX = bx + bw / 2;
+                        const obstacleWeight = Math.round(pred.score * 75);
+                        this.lastDetectedObject = pred.class;
+                        
+                        if (centerX < vw * 0.33) {
+                            scoreL = Math.max(scoreL, obstacleWeight);
+                        } else if (centerX < vw * 0.66) {
+                            scoreC = Math.max(scoreC, obstacleWeight);
+                        } else {
+                            scoreR = Math.max(scoreR, obstacleWeight);
+                        }
+                    }
+                });
+            } catch (err) {
+                // Ignore transient TFJS detection errors
+            }
+        }
+        
+        // Smooth transitions with exponential moving average
+        this.zoneL = Math.round(this.zoneL * 0.6 + scoreL * 0.4);
+        this.zoneC = Math.round(this.zoneC * 0.6 + scoreC * 0.4);
+        this.zoneR = Math.round(this.zoneR * 0.6 + scoreR * 0.4);
+        
+        this.updateRadarUI();
+        this.drawHUD(vw, vh);
+    }
+    
+    getNavigationDecision() {
+        if (!this.isRunning || !this.app.visionStream) {
+            return { action: 'fallback', reason: 'Vision offline — using standard exploration' };
+        }
+        
+        // Dead end trap check
+        if (this.zoneL > 65 && this.zoneC > 65 && this.zoneR > 65) {
+            return {
+                action: 'reverse_turn',
+                reason: '⚠️ All zones blocked! Reversing out of dead end...',
+                objectName: this.lastDetectedObject
+            };
+        }
+        
+        // Center blocked check
+        if (this.zoneC >= 38) {
+            const objText = this.lastDetectedObject ? `[${this.lastDetectedObject}]` : 'obstacle';
+            if (this.zoneL < this.zoneR) {
+                return {
+                    action: 'steer_left',
+                    reason: `🔴 Avoiding ${objText} ahead — Steering Left`,
+                    objectName: this.lastDetectedObject
+                };
+            } else {
+                return {
+                    action: 'steer_right',
+                    reason: `🔴 Avoiding ${objText} ahead — Steering Right`,
+                    objectName: this.lastDetectedObject
+                };
+            }
+        }
+        
+        // Clear path
+        return {
+            action: 'forward',
+            reason: '🟢 Path clear — Cruising forward',
+            objectName: null
+        };
+    }
+    
+    updateBadge(className, text) {
+        const badge = document.getElementById('vision-nav-status-badge');
+        if (!badge) return;
+        badge.className = 'vision-nav-badge ' + className;
+        badge.textContent = text;
+    }
+    
+    updateActionText(text) {
+        const el = document.getElementById('vision-nav-action-text');
+        if (el) el.textContent = text;
+    }
+    
+    updateRadarUI() {
+        const updateBar = (id, val) => {
+            const bar = document.getElementById(`radar-bar-${id}`);
+            const label = document.getElementById(`radar-val-${id}`);
+            if (!bar || !label) return;
+            bar.style.width = `${val}%`;
+            label.textContent = `${val}%`;
+            if (val > 60) bar.style.backgroundColor = '#ff6b6b';
+            else if (val > 35) bar.style.backgroundColor = '#feca57';
+            else bar.style.backgroundColor = '#00b894';
+        };
+        updateBar('l', this.zoneL);
+        updateBar('c', this.zoneC);
+        updateBar('r', this.zoneR);
+    }
+    
+    drawHUD(vw, vh) {
+        const canvas = document.getElementById('vision-hud-canvas');
+        if (!canvas) return;
+        if (canvas.width !== vw || canvas.height !== vh) {
+            canvas.width = vw;
+            canvas.height = vh;
+        }
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, vw, vh);
+        
+        // Draw 3 zone separators
+        ctx.strokeStyle = 'rgba(0, 240, 255, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(vw * 0.33, 0); ctx.lineTo(vw * 0.33, vh);
+        ctx.moveTo(vw * 0.66, 0); ctx.lineTo(vw * 0.66, vh);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        // Draw center targeting crosshair
+        ctx.strokeStyle = 'rgba(0, 240, 255, 0.6)';
+        ctx.lineWidth = 1.5;
+        const cx = vw / 2, cy = vh / 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+        ctx.moveTo(cx - 20, cy); ctx.lineTo(cx - 8, cy);
+        ctx.moveTo(cx + 8, cy); ctx.lineTo(cx + 20, cy);
+        ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy - 8);
+        ctx.moveTo(cx, cy + 8); ctx.lineTo(cx, cy + 20);
+        ctx.stroke();
+        
+        // Draw COCO-SSD bounding boxes
+        this.detectedBoxes.forEach(pred => {
+            const [bx, by, bw, bh] = pred.bbox;
+            const isDanger = by + bh > vh * 0.35 && (bx + bw/2 > vw*0.25 && bx + bw/2 < vw*0.75);
+            
+            ctx.strokeStyle = isDanger ? '#ff6b6b' : '#00f0ff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(bx, by, bw, bh);
+            
+            // Draw sci-fi label tab
+            ctx.fillStyle = isDanger ? '#ff6b6b' : '#00f0ff';
+            ctx.fillRect(bx, Math.max(0, by - 20), bw, 20);
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillText(`${pred.class.toUpperCase()} ${Math.round(pred.score * 100)}%`, bx + 6, Math.max(14, by - 6));
+        });
+    }
+    
+    clearHUD() {
+        const canvas = document.getElementById('vision-hud-canvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════
+//  Autonomous Patrol Engine
+//  Runs entirely in the web app — sends BLE motor commands
+// ═══════════════════════════════════════════════
+
+class AutonomousPatrol {
+    constructor(app) {
+        this.app = app;
+        this.visionNav = new VisionNavEngine(app, this);
+        this.active = false;
+        this.paused = false;
+        this.pattern = 'explore';  // explore, zigzag, sentry, orbit
+        this.speed = 40;           // 15-70 percent
+        this.patrolTimer = null;
+        this.stepTimer = null;
+        this.statsTimer = null;
+        this.idleTimer = null;
+        this.cliffRecovering = false;
+        
+        // Stats
+        this.startTime = 0;
+        this.turnCount = 0;
+        this.cliffCount = 0;
+        
+        // Pattern state
+        this.currentStep = 0;
+        this.zigzagLeft = true;
+    }
+    
+    get pwmSpeed() {
+        return Math.round((this.speed / 100) * 255);
+    }
+    
+    // ─── Start / Stop ───
+    
+    start() {
+        if (this.active) return;
+        if (!this.app.connected) {
+            this.app.showToast('⚡ Connect Bluetooth first!');
+            this.app.showConnectModal();
+            return;
+        }
+        
+        this.active = true;
+        this.paused = false;
+        this.cliffRecovering = false;
+        this.startTime = Date.now();
+        this.turnCount = 0;
+        this.cliffCount = 0;
+        this.currentStep = 0;
+        this.zigzagLeft = true;
+        
+        // Tell firmware to enable autonomous cliff safety
+        ble.setAutonomous(true);
+        
+        // Update UI
+        this.updateUI('patrolling');
+        this.app.showToast(`🛰️ Patrol started — ${this.pattern.toUpperCase()} mode`);
+        
+        // Set face mood
+        if (this.app.face) {
+            const moodMap = { explore: 'curious', zigzag: 'excited', sentry: 'focused', orbit: 'curious' };
+            this.app.face.setMood(moodMap[this.pattern] || 'curious', 0, false, true);
+            this.app.updateMoodLabel();
+        }
+        
+        // Start the patrol loop
+        this.runPatrolStep();
+        
+        // Start stats counter
+        this.statsTimer = setInterval(() => this.updateStatsUI(), 1000);
+        
+        // Start idle personality (random animations every 15-30s)
+        this.scheduleIdleBehavior();
+        
+        // Start AI Vision Nav if in explore mode
+        if (this.pattern === 'explore' && this.visionNav) {
+            this.visionNav.start();
+        } else if (this.visionNav) {
+            this.visionNav.stop();
+        }
+        
+        if (typeof soundEngine !== 'undefined') soundEngine.playBeep(523, 150, 'sine', 0.15);
+    }
+    
+    stop() {
+        this.active = false;
+        this.paused = false;
+        this.cliffRecovering = false;
+        
+        // Clear all timers
+        clearTimeout(this.stepTimer);
+        clearTimeout(this.idleTimer);
+        clearInterval(this.statsTimer);
+        this.stepTimer = null;
+        this.idleTimer = null;
+        this.statsTimer = null;
+        
+        // Stop motors
+        if (this.app.connected) {
+            ble.stop();
+            ble.setAutonomous(false);
+        }
+        
+        if (this.visionNav) this.visionNav.stop();
+        
+        // Update UI
+        this.updateUI('idle');
+        this.app.showToast('🛑 Patrol stopped');
+        
+        if (this.app.face) {
+            this.app.face.setMood('happy', 3000);
+            this.app.updateMoodLabel();
+        }
+        
+        if (typeof soundEngine !== 'undefined') soundEngine.playBeep(330, 200, 'sine', 0.15);
+    }
+    
+    pause(reason = '') {
+        if (!this.active || this.paused) return;
+        this.paused = true;
+        
+        clearTimeout(this.stepTimer);
+        clearTimeout(this.idleTimer);
+        this.stepTimer = null;
+        this.idleTimer = null;
+        
+        if (this.app.connected) ble.stop();
+        if (this.visionNav) this.visionNav.stop();
+        this.updateUI('paused', reason);
+    }
+    
+    resume() {
+        if (!this.active || !this.paused) return;
+        if (!this.app.connected) return;
+        
+        this.paused = false;
+        this.cliffRecovering = false;
+        this.updateUI('patrolling');
+        this.app.showToast('▶️ Patrol resumed!');
+        
+        ble.setAutonomous(true);
+        if (this.pattern === 'explore' && this.visionNav) {
+            this.visionNav.start();
+        }
+        this.runPatrolStep();
+        this.scheduleIdleBehavior();
+    }
+    
+    toggle() {
+        if (this.active) {
+            this.stop();
+        } else {
+            this.start();
+        }
+    }
+    
+    // ─── Cliff Handling ───
+    
+    handleCliffEvent(cliffCode) {
+        if (!this.active) return;
+        this.cliffCount++;
+        this.cliffRecovering = true;
+        
+        // Stop current step
+        clearTimeout(this.stepTimer);
+        this.stepTimer = null;
+        
+        this.updateStatsUI();
+        this.updateUI('cliff');
+        
+        // After a short delay (firmware already reversed), turn away from the cliff
+        setTimeout(async () => {
+            if (!this.active || !this.app.connected) return;
+            
+            const turnSpeed = this.pwmSpeed;
+            
+            if (cliffCode === CLIFF.LEFT) {
+                // Turn right to avoid left cliff
+                await ble.spinRight(turnSpeed);
+            } else if (cliffCode === CLIFF.RIGHT) {
+                // Turn left to avoid right cliff
+                await ble.spinLeft(turnSpeed);
+            } else {
+                // Both — full 180° turn (spin longer)
+                await ble.spinRight(turnSpeed);
+            }
+            
+            this.turnCount++;
+            
+            const turnDuration = (cliffCode === CLIFF.BOTH) ? 1200 : 800;
+            
+            setTimeout(() => {
+                if (!this.active || !this.app.connected) return;
+                ble.stop();
+                this.cliffRecovering = false;
+                this.updateUI('patrolling');
+                
+                // Resume patrol pattern
+                setTimeout(() => {
+                    if (this.active && !this.paused) {
+                        this.runPatrolStep();
+                    }
+                }, 300);
+            }, turnDuration);
+            
+        }, 500);
+    }
+    
+    // ─── Patrol Pattern Logic ───
+    
+    runPatrolStep() {
+        if (!this.active || this.paused || this.cliffRecovering) return;
+        if (!this.app.connected) {
+            this.pause('Disconnected');
+            return;
+        }
+        
+        switch (this.pattern) {
+            case 'explore':  this.stepExplore();  break;
+            case 'zigzag':   this.stepZigzag();   break;
+            case 'sentry':   this.stepSentry();   break;
+            case 'orbit':    this.stepOrbit();    break;
+            default:         this.stepExplore();  break;
+        }
+    }
+    
+    // Pattern 1: EXPLORE — Vision-Guided Autonomous Navigation (or Fallback)
+    stepExplore() {
+        if (!this.active || this.cliffRecovering) return;
+        
+        // 1. Try Vision-Guided Navigation
+        if (this.visionNav && this.visionNav.isRunning && this.app.visionStream) {
+            const nav = this.visionNav.getNavigationDecision();
+            this.visionNav.updateActionText(`🤖 ${nav.reason}`);
+            
+            if (nav.action === 'forward') {
+                ble.moveForward(this.pwmSpeed);
+                this.stepTimer = setTimeout(() => {
+                    if (this.active && !this.cliffRecovering) this.runPatrolStep();
+                }, 600);
+                return;
+            } else if (nav.action === 'steer_left') {
+                ble.spinLeft(this.pwmSpeed);
+                this.turnCount++;
+                this.updateStatsUI();
+                if (nav.objectName && Math.random() < 0.3) {
+                    this.app.showToast(`👁️ Steered left to avoid ${nav.objectName}!`);
+                }
+                this.stepTimer = setTimeout(() => {
+                    if (this.active && !this.cliffRecovering) this.runPatrolStep();
+                }, 500);
+                return;
+            } else if (nav.action === 'steer_right') {
+                ble.spinRight(this.pwmSpeed);
+                this.turnCount++;
+                this.updateStatsUI();
+                if (nav.objectName && Math.random() < 0.3) {
+                    this.app.showToast(`👁️ Steered right to avoid ${nav.objectName}!`);
+                }
+                this.stepTimer = setTimeout(() => {
+                    if (this.active && !this.cliffRecovering) this.runPatrolStep();
+                }, 500);
+                return;
+            } else if (nav.action === 'reverse_turn') {
+                ble.moveBackward(this.pwmSpeed);
+                this.stepTimer = setTimeout(() => {
+                    if (!this.active || this.cliffRecovering) return;
+                    ble.spinRight(this.pwmSpeed);
+                    this.turnCount++;
+                    this.updateStatsUI();
+                    this.stepTimer = setTimeout(() => {
+                        if (this.active && !this.cliffRecovering) this.runPatrolStep();
+                    }, 800);
+                }, 400);
+                return;
+            }
+        }
+        
+        // 2. Standard Exploration Fallback
+        const forwardTime = 2000 + Math.random() * 3000;  // 2-5 seconds
+        
+        ble.moveForward(this.pwmSpeed);
+        
+        this.stepTimer = setTimeout(() => {
+            if (!this.active || this.cliffRecovering) return;
+            
+            // Random turn
+            const turnRight = Math.random() > 0.5;
+            const turnTime = 400 + Math.random() * 800;  // 0.4-1.2s turn
+            
+            if (turnRight) {
+                ble.spinRight(this.pwmSpeed);
+            } else {
+                ble.spinLeft(this.pwmSpeed);
+            }
+            this.turnCount++;
+            this.updateStatsUI();
+            
+            this.stepTimer = setTimeout(() => {
+                if (!this.active || this.cliffRecovering) return;
+                ble.stop();
+                
+                // Brief pause before next step
+                this.stepTimer = setTimeout(() => this.runPatrolStep(), 200);
+            }, turnTime);
+        }, forwardTime);
+    }
+    
+    // Pattern 2: ZIGZAG — Alternating left-forward and right-forward sweeps
+    stepZigzag() {
+        const sweepTime = 1500 + Math.random() * 1000;  // 1.5-2.5s
+        
+        if (this.zigzagLeft) {
+            ble.turnLeft(this.pwmSpeed);
+        } else {
+            ble.turnRight(this.pwmSpeed);
+        }
+        this.turnCount++;
+        this.updateStatsUI();
+        
+        this.stepTimer = setTimeout(() => {
+            if (!this.active || this.cliffRecovering) return;
+            this.zigzagLeft = !this.zigzagLeft;
+            
+            // Short forward burst between zags
+            ble.moveForward(this.pwmSpeed);
+            
+            this.stepTimer = setTimeout(() => {
+                if (!this.active || this.cliffRecovering) return;
+                this.runPatrolStep();
+            }, 800);
+        }, sweepTime);
+    }
+    
+    // Pattern 3: SENTRY — Forward, pause & look around, continue
+    stepSentry() {
+        const forwardTime = 2000 + Math.random() * 2000;  // 2-4s forward
+        
+        ble.moveForward(this.pwmSpeed);
+        
+        this.stepTimer = setTimeout(() => {
+            if (!this.active || this.cliffRecovering) return;
+            
+            // Stop and "look around"
+            ble.stop();
+            
+            if (this.app.face) {
+                this.app.face.setMood('thinking', 3000);
+                this.app.updateMoodLabel();
+            }
+            
+            // Small turn left
+            this.stepTimer = setTimeout(() => {
+                if (!this.active || this.cliffRecovering) return;
+                ble.spinLeft(Math.round(this.pwmSpeed * 0.6));
+                this.turnCount++;
+                
+                this.stepTimer = setTimeout(() => {
+                    if (!this.active || this.cliffRecovering) return;
+                    // Turn right (past center)
+                    ble.spinRight(Math.round(this.pwmSpeed * 0.6));
+                    this.turnCount++;
+                    this.updateStatsUI();
+                    
+                    this.stepTimer = setTimeout(() => {
+                        if (!this.active || this.cliffRecovering) return;
+                        ble.stop();
+                        
+                        if (this.app.face) {
+                            this.app.face.setMood('focused', 0, false, true);
+                            this.app.updateMoodLabel();
+                        }
+                        
+                        // Resume patrol
+                        this.stepTimer = setTimeout(() => this.runPatrolStep(), 500);
+                    }, 600);
+                }, 600);
+            }, 1000);  // Pause duration
+        }, forwardTime);
+    }
+    
+    // Pattern 4: ORBIT — Continuous gentle curve (one wheel slightly faster)
+    stepOrbit() {
+        const orbitTime = 3000 + Math.random() * 4000;  // 3-7s orbit
+        const innerSpeed = Math.round(this.pwmSpeed * 0.4);
+        const outerSpeed = this.pwmSpeed;
+        
+        // Alternate orbit direction
+        if (this.currentStep % 2 === 0) {
+            ble.writeMotorCmd(ble.buildPacket(CMD.MOVE_FORWARD, 0, 0, innerSpeed));
+            // We need asymmetric control — use turnLeft/turnRight which already has speed differential
+            ble.turnLeft(outerSpeed);
+        } else {
+            ble.turnRight(outerSpeed);
+        }
+        this.currentStep++;
+        this.turnCount++;
+        this.updateStatsUI();
+        
+        this.stepTimer = setTimeout(() => {
+            if (!this.active || this.cliffRecovering) return;
+            ble.stop();
+            
+            this.stepTimer = setTimeout(() => this.runPatrolStep(), 300);
+        }, orbitTime);
+    }
+    
+    // ─── Idle Personality ───
+    
+    scheduleIdleBehavior() {
+        if (!this.active || this.paused) return;
+        
+        const delay = 15000 + Math.random() * 15000;  // 15-30 seconds
+        
+        this.idleTimer = setTimeout(() => {
+            if (!this.active || this.paused || this.cliffRecovering) {
+                return;
+            }
+            
+            // Random personality action
+            const actions = ['nod', 'excited'];
+            const action = actions[Math.floor(Math.random() * actions.length)];
+            
+            if (this.app.connected) {
+                if (action === 'nod') ble.playAnimation(0x02);
+                else ble.playAnimation(0x04);
+            }
+            
+            if (this.app.face) {
+                const moods = ['happy', 'excited', 'eureka', 'curious'];
+                const mood = moods[Math.floor(Math.random() * moods.length)];
+                this.app.face.setMood(mood, 2000);
+                this.app.updateMoodLabel();
+            }
+            
+            // Schedule next idle behavior
+            this.scheduleIdleBehavior();
+        }, delay);
+    }
+    
+    // ─── UI Updates ───
+    
+    updateUI(state, reason = '') {
+        const panel = document.getElementById('patrol-panel');
+        const badge = document.getElementById('patrol-status-badge');
+        const statusText = document.getElementById('patrol-status-text');
+        const toggleBtn = document.getElementById('patrol-toggle-btn');
+        const toggleIcon = document.getElementById('patrol-toggle-icon');
+        const toggleLabel = document.getElementById('patrol-toggle-label');
+        
+        // Reset classes
+        if (panel) panel.classList.remove('active');
+        if (badge) badge.className = 'patrol-status-badge';
+        if (toggleBtn) toggleBtn.classList.remove('active');
+        
+        switch (state) {
+            case 'patrolling':
+                if (panel) panel.classList.add('active');
+                if (badge) badge.classList.add('patrolling');
+                if (statusText) statusText.textContent = 'Patrolling';
+                if (toggleBtn) toggleBtn.classList.add('active');
+                if (toggleLabel) toggleLabel.textContent = 'Stop Patrol';
+                // Swap icon to square (stop)
+                if (toggleIcon) {
+                    toggleIcon.setAttribute('data-lucide', 'square');
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+                break;
+            case 'cliff':
+                if (panel) panel.classList.add('active');
+                if (badge) badge.classList.add('cliff');
+                if (statusText) statusText.textContent = 'Cliff!';
+                if (toggleBtn) toggleBtn.classList.add('active');
+                break;
+            case 'paused':
+                if (badge) badge.classList.add('patrolling');
+                if (statusText) statusText.textContent = reason ? `Paused (${reason})` : 'Paused';
+                if (toggleBtn) toggleBtn.classList.add('active');
+                break;
+            default: // idle
+                if (statusText) statusText.textContent = 'Idle';
+                if (toggleLabel) toggleLabel.textContent = 'Start Patrol';
+                if (toggleIcon) {
+                    toggleIcon.setAttribute('data-lucide', 'play');
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                }
+                break;
+        }
+    }
+    
+    updateStatsUI() {
+        const elapsed = this.active ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
+        const mins = Math.floor(elapsed / 60);
+        const secs = (elapsed % 60).toString().padStart(2, '0');
+        
+        const timeEl = document.getElementById('patrol-time');
+        const turnsEl = document.getElementById('patrol-turns');
+        const cliffsEl = document.getElementById('patrol-cliffs');
+        
+        if (timeEl) timeEl.textContent = `${mins}:${secs}`;
+        if (turnsEl) turnsEl.textContent = `${this.turnCount} turns`;
+        if (cliffsEl) cliffsEl.textContent = `${this.cliffCount} cliffs`;
     }
 }
 

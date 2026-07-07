@@ -8,7 +8,8 @@ import {
   SafeAreaView, 
   ActivityIndicator, 
   StatusBar, 
-  Alert 
+  Alert,
+  Image
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Speech from 'expo-speech';
@@ -164,7 +165,8 @@ export default function App() {
       <SafeAreaView style={styles.configContainer}>
         <StatusBar barStyle="light-content" />
         <View style={styles.card}>
-          <Text style={styles.title}>🤖 LIK Companion</Text>
+          <Image source={require('./assets/logo.png')} style={styles.logo} />
+          <Text style={styles.title}>LIK Companion</Text>
           <Text style={styles.subtitle}>Enter your LIK Robot's server address to connect.</Text>
           
           <TextInput
@@ -190,7 +192,8 @@ export default function App() {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="light-content" />
-        <Text style={styles.splashTitle}>🤖 LIK Robot</Text>
+        <Image source={require('./assets/logo.png')} style={styles.splashLogo} />
+        <Text style={styles.splashTitle}>LIK Robot</Text>
         <Text style={styles.splashStatus}>Connecting to http://{serverIp}...</Text>
         <ActivityIndicator size="large" color="#38BDF8" style={{ marginVertical: 24 }} />
         
@@ -374,5 +377,23 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     lineHeight: 24,
     fontFamily: 'System',
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    alignSelf: 'center',
+    marginBottom: 20,
+    borderRadius: 40,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  splashLogo: {
+    width: 120,
+    height: 120,
+    alignSelf: 'center',
+    marginBottom: 24,
+    borderRadius: 60,
+    borderWidth: 2,
+    borderColor: '#334155',
   },
 });

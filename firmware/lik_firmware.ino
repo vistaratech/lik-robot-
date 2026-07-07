@@ -83,10 +83,17 @@ unsigned long ledBlinkTime = 0;
 bool ledBlinkState     = false;
 uint8_t ledR = 0, ledG = 0, ledB = 0;
 
+// Autonomous patrol state
+bool autonomousActive      = false;
+unsigned long lastCliffCheck = 0;
+bool cliffDetectedL        = false;
+bool cliffDetectedR        = false;
+
 // Forward Declarations
 void setLED(uint8_t r, uint8_t g, uint8_t b);
 void stopMotors();
 void processCommand(uint8_t* data, size_t length);
+void sendCliffStatus(uint8_t cliffCode);
 
 void toggleOnboardLED(bool state) {
     #ifdef USE_NEOPIXEL
@@ -313,6 +320,87 @@ void setupBattery() {
     pinMode(BATTERY_PIN, INPUT);
     analogSetAttenuation(ADC_11db);  // Full 0-3.3V range
     Serial.println("[BATT] Battery monitor initialized");
+}
+
+// ═══════════════════════════════════════════════
+//  Cliff Sensor Setup & Check (Autonomous Patrol Safety)
+// ═══════════════════════════════════════════════
+
+void setupCliffSensors() {
+    pinMode(CLIFF_PIN_L, INPUT_PULLUP);
+    pinMode(CLIFF_PIN_R, INPUT_PULLUP);
+    Serial.println("[CLIFF] Cliff sensors initialized (GPIO 21, 22)");
+}
+
+void sendCliffStatus(uint8_t cliffCode) {
+    if (!deviceConnected || !handshakeComplete) return;
+    
+    // Build an 8-byte status packet: [0, CMD_AUTONOMOUS_STATUS, cliffCode, 0, 0, 0, 0, CRC]
+    uint8_t packet[8];
+    packet[0] = 0;                    // SEQ (not used for firmware->app)
+    packet[1] = CMD_AUTONOMOUS_STATUS;
+    packet[2] = cliffCode;            // CLIFF_LEFT, CLIFF_RIGHT, or CLIFF_BOTH
+    packet[3] = 0;
+    packet[4] = 0;
+    packet[5] = 0;
+    packet[6] = 0;
+    // CRC
+    uint8_t crc = 0;
+    for (int i = 0; i < 7; i++) crc ^= packet[i];
+    packet[7] = crc;
+    
+    pMotorStatusChar->setValue(packet, 8);
+    pMotorStatusChar->notify();
+    
+    Serial.printf("[CLIFF] Sent cliff status: 0x%02X\n", cliffCode);
+}
+
+void checkCliffSensors() {
+    if (!autonomousActive) return;
+    if (millis() - lastCliffCheck < CLIFF_CHECK_INTERVAL_MS) return;
+    lastCliffCheck = millis();
+    
+    // TCRT5000: LOW = surface detected (safe), HIGH = no surface (cliff!)
+    bool leftCliff  = digitalRead(CLIFF_PIN_L) == HIGH;
+    bool rightCliff = digitalRead(CLIFF_PIN_R) == HIGH;
+    
+    if (!leftCliff && !rightCliff) {
+        cliffDetectedL = false;
+        cliffDetectedR = false;
+        return;  // All clear
+    }
+    
+    // Cliff detected! Emergency response
+    stopMotors();
+    
+    uint8_t cliffCode = CLIFF_NONE;
+    if (leftCliff && rightCliff) {
+        cliffCode = CLIFF_BOTH;
+        Serial.println("[CLIFF] ⚠️ BOTH sides — cliff detected!");
+    } else if (leftCliff) {
+        cliffCode = CLIFF_LEFT;
+        Serial.println("[CLIFF] ⚠️ LEFT side — cliff detected!");
+    } else {
+        cliffCode = CLIFF_RIGHT;
+        Serial.println("[CLIFF] ⚠️ RIGHT side — cliff detected!");
+    }
+    
+    cliffDetectedL = leftCliff;
+    cliffDetectedR = rightCliff;
+    
+    // Flash red LED warning
+    setLED(255, 0, 0);
+    
+    // Auto-reverse briefly (300ms)
+    moveBackward(50);
+    delay(300);
+    stopMotors();
+    
+    // Restore LED
+    setLED(0, 0, 0);
+    
+    // Notify the app about the cliff event
+    sendCliffStatus(cliffCode);
 }
 
 uint8_t readBatteryPercent() {
@@ -602,6 +690,21 @@ void processCommand(uint8_t* data, size_t length) {
             stopMotors();
             Serial.println("[ANIM] Stopped");
             break;
+        
+        case CMD_SET_AUTONOMOUS:
+            autonomousActive = (param1 == 1);
+            if (autonomousActive) {
+                Serial.println("[AUTO] Autonomous safety mode ENABLED");
+                setLED(0, 50, 0);  // Dim green = autonomous active
+                delay(200);
+                setLED(0, 0, 0);
+            } else {
+                Serial.println("[AUTO] Autonomous safety mode DISABLED");
+                stopMotors();
+                cliffDetectedL = false;
+                cliffDetectedR = false;
+            }
+            break;
             
         default:
             Serial.printf("[CMD] Unknown command: 0x%02X\n", cmd);
@@ -620,12 +723,6 @@ class MotorCmdCallback : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* pChar) override {
         std::string rxValue = pChar->getValue();
         if (rxValue.length() > 0) {
-            Serial.printf("[BLE] Received %d bytes: ", rxValue.length());
-            for (int i = 0; i < rxValue.length(); i++) {
-                Serial.printf("%02X ", (uint8_t)rxValue[i]);
-            }
-            Serial.println();
-            
             processCommand((uint8_t*)rxValue.data(), rxValue.length());
         }
     }
@@ -799,6 +896,7 @@ void setup() {
     setupLEDs();
     setupMotors();
     setupBattery();
+    setupCliffSensors();
     setupBLE();
     
     Serial.println();
@@ -812,6 +910,7 @@ void loop() {
     updateAnimation();
     updateLEDBlink();
     updateBattery();
+    checkCliffSensors();
     idleLEDPattern();
     
     if (!deviceConnected && oldDeviceConnected) {

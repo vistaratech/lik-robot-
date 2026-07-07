@@ -102,8 +102,14 @@ Response MUST be a valid JSON object. Do not wrap in markdown tags. Output raw J
 
         let replyObj;
 
+        const isCohere = apiKey && apiKey.length === 40 && /^[a-zA-Z0-9]+$/.test(apiKey);
+
         if (provider === 'openai') {
-            replyObj = await callOpenAI(apiKey, systemInstruction, message, history);
+            if (isCohere) {
+                replyObj = await callCohere(apiKey, systemInstruction, message, history);
+            } else {
+                replyObj = await callOpenAI(apiKey, systemInstruction, message, history);
+            }
         } else if (provider === 'groq') {
             replyObj = await callGroq(apiKey, systemInstruction, message, history);
         } else {
@@ -163,7 +169,7 @@ async function callGemini(apiKey, systemInstruction, message, history) {
 }
 
 // ─────────────────────────────────────────────
-//  OpenAI API Call
+//  OpenAI API Call (Supports OpenRouter redirection)
 // ─────────────────────────────────────────────
 async function callOpenAI(apiKey, systemInstruction, message, history) {
     const messages = [
@@ -175,14 +181,32 @@ async function callOpenAI(apiKey, systemInstruction, message, history) {
     }
     messages.push({ role: 'user', content: message });
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const isOpenRouter = apiKey.startsWith('sk-or-v1-');
+    const isGitHub = apiKey.startsWith('ghp_') || apiKey.startsWith('github_pat_');
+
+    let url = 'https://api.openai.com/v1/chat/completions';
+    let model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+    if (isOpenRouter) {
+        url = 'https://openrouter.ai/api/v1/chat/completions';
+        model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
+    } else if (isGitHub) {
+        url = 'https://models.inference.ai.azure.com/chat/completions';
+        model = process.env.GITHUB_MODEL || 'gpt-4o-mini';
+    }
+
+    const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
+            'Authorization': `Bearer ${apiKey}`,
+            ...(isOpenRouter ? {
+                'HTTP-Referer': 'http://localhost:3000',
+                'X-Title': 'VILY Companion'
+            } : {})
         },
         body: JSON.stringify({
-            model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+            model,
             messages,
             response_format: { type: "json_object" },
             max_tokens: 500
@@ -191,12 +215,78 @@ async function callOpenAI(apiKey, systemInstruction, message, history) {
 
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`OpenAI API Error (${response.status}): ${errText}`);
+        throw new Error(`OpenAI/OpenRouter/GitHub API Error (${response.status}): ${errText}`);
     }
 
     const resData = await response.json();
     const textContent = resData.choices[0].message.content;
     return parseAIResponse(textContent);
+}
+
+// ─────────────────────────────────────────────
+//  Cohere API Call
+// ─────────────────────────────────────────────
+async function callCohere(apiKey, systemInstruction, message, history) {
+    const chatHistory = [];
+    for (const msg of history.slice(-8)) {
+        chatHistory.push({
+            role: msg.role === 'user' ? 'USER' : 'CHATBOT',
+            message: msg.content
+        });
+    }
+
+    const response = await fetch('https://api.cohere.ai/v1/chat', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: message,
+            model: process.env.COHERE_MODEL || 'command-r-08-2024',
+            preamble: systemInstruction,
+            chat_history: chatHistory,
+            response_format: { type: 'json_object' }
+        })
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Cohere API Error (${response.status}): ${errText}`);
+    }
+
+    const resData = await response.json();
+    return parseAIResponse(resData.text);
+}
+
+// ─────────────────────────────────────────────
+//  Cohere Vision Call
+// ─────────────────────────────────────────────
+async function callCohereVision(apiKey, systemInstruction, base64Data) {
+    const response = await fetch('https://api.cohere.ai/v1/chat', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: 'React to what you see. ' + systemInstruction,
+            model: process.env.COHERE_VISION_MODEL || 'c4ai-aya-vision-32b',
+            images: [
+                {
+                    url: `data:image/jpeg;base64,${base64Data}`
+                }
+            ]
+        })
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Cohere Vision Error (${response.status}): ${errText}`);
+    }
+
+    const resData = await response.json();
+    return parseAIResponse(resData.text);
 }
 
 // ─────────────────────────────────────────────
@@ -222,7 +312,10 @@ async function callGroq(apiKey, systemInstruction, message, history) {
             model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
             messages,
             response_format: { type: "json_object" },
-            max_tokens: 500
+            temperature: 1,
+            max_completion_tokens: 1024,
+            top_p: 1,
+            stream: true
         })
     });
 
@@ -231,8 +324,50 @@ async function callGroq(apiKey, systemInstruction, message, history) {
         throw new Error(`Groq API Error (${response.status}): ${errText}`);
     }
 
-    const resData = await response.json();
-    const textContent = resData.choices[0].message.content;
+    // Read the stream and accumulate chunks
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let textContent = '';
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // Save the last partial line back to the buffer
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            if (trimmed === 'data: [DONE]') continue;
+            
+            if (trimmed.startsWith('data: ')) {
+                try {
+                    const parsed = JSON.parse(trimmed.slice(6));
+                    const chunkText = parsed.choices[0]?.delta?.content || '';
+                    textContent += chunkText;
+                    // Print chunk to server console to mimic their template behavior
+                    process.stdout.write(chunkText);
+                } catch (e) {
+                    // Ignore malformed JSON chunks
+                }
+            }
+        }
+    }
+    
+    // Flush any remaining buffer data
+    if (buffer && buffer.startsWith('data: ') && !buffer.includes('[DONE]')) {
+        try {
+            const parsed = JSON.parse(buffer.slice(6));
+            textContent += parsed.choices[0]?.delta?.content || '';
+        } catch (e) {}
+    }
+    
+    console.log('\n[Groq] Streaming Complete.');
     return parseAIResponse(textContent);
 }
 
@@ -496,7 +631,9 @@ app.post('/api/transcribe', async (req, res) => {
         return res.status(400).json({ error: 'Audio data is required' });
     }
 
-    const apiKey = getAPIKey(provider);
+    // Always use the Groq API key for transcription (Whisper) because Groq is the primary STT engine 
+    // and other keys (like OpenRouter or Gemini keys) are incompatible with the Groq Whisper endpoint.
+    const apiKey = process.env.GROQ_API_KEY || getAPIKey(provider);
     const isMockKey = !apiKey || 
                       apiKey.trim() === '' || 
                       apiKey === 'YOUR_GEMINI_API_KEY' || 
@@ -504,13 +641,14 @@ app.post('/api/transcribe', async (req, res) => {
                       apiKey === 'YOUR_GROQ_API_KEY';
 
     if (isMockKey) {
-        console.log(`[Transcribe] No valid API Key found for ${provider}. Using mock transcription response.`);
+        console.log(`[Transcribe] No valid API Key found. Using mock transcription response.`);
         return res.json({ text: "Hello Lik, how are you?" });
     }
 
     try {
         const audioBuffer = Buffer.from(audio, 'base64');
-        const text = await callGroqWhisper(apiKey, audioBuffer, mimeType, language);
+        const transcriptionKey = process.env.GROQ_API_KEY || apiKey;
+        const text = await callGroqWhisper(transcriptionKey, audioBuffer, mimeType, language);
         res.json({ text });
     } catch (err) {
         console.error('[Transcribe] Transcription Error:', err);
@@ -565,8 +703,14 @@ Response MUST be a valid JSON object with EXACTLY three fields:
 Response MUST be a valid JSON object. Output raw JSON only.`;
 
         let replyObj;
+        const isCohere = apiKey && apiKey.length === 40 && /^[a-zA-Z0-9]+$/.test(apiKey);
+
         if (provider === 'openai') {
-            replyObj = await callOpenAIVision(apiKey, visionSystemInstruction, base64Data);
+            if (isCohere) {
+                replyObj = await callCohereVision(apiKey, visionSystemInstruction, base64Data);
+            } else {
+                replyObj = await callOpenAIVision(apiKey, visionSystemInstruction, base64Data);
+            }
         } else if (provider === 'groq') {
             replyObj = await callGroqVision(apiKey, visionSystemInstruction, base64Data);
         } else {
@@ -609,7 +753,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 1500) {
 }
 
 app.post('/api/tts', async (req, res) => {
-    const { text, language = 'en-US' } = req.body;
+    const { text, language = 'en-US', voice = 'Puck' } = req.body;
     if (!text) return res.status(400).json({ error: 'text is required' });
 
     // Clean text for TTS (remove markdown/emoji)
@@ -636,8 +780,8 @@ app.post('/api/tts', async (req, res) => {
         const isGeminiHealthy = (nowTime - lastGeminiFailureTime) > TTS_CIRCUIT_BREAKER_MS;
         if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY' && isGeminiHealthy) {
             try {
-                const ttsModel = 'gemini-2.5-flash-preview-tts';
-                const ttsVoice = 'Kore'; // Excellent for Tamil
+                const ttsModel = 'gemini-2.5-flash';
+                const ttsVoice = voice || 'Kore'; // Respect selected voice or default to Kore for Tamil
 
                 const gemRes = await fetchWithTimeout(
                     `https://generativelanguage.googleapis.com/v1beta/models/${ttsModel}:generateContent?key=${geminiKey}`,
@@ -652,7 +796,7 @@ app.post('/api/tts', async (req, res) => {
                             }
                         })
                     },
-                    1500
+                    4500
                 );
 
                 if (gemRes.ok) {
@@ -660,7 +804,7 @@ app.post('/api/tts', async (req, res) => {
                     const audioPart = resData?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
                     if (audioPart) {
                         const { data: audioBase64, mimeType } = audioPart.inlineData;
-                        console.log(`[TTS] Gemini Tamil TTS OK — length=${audioBase64.length}`);
+                        console.log(`[TTS] Gemini Tamil TTS OK — voice=${ttsVoice} length=${audioBase64.length}`);
                         return res.json({ audio: audioBase64, mimeType });
                     }
                 } else {
@@ -673,7 +817,49 @@ app.post('/api/tts', async (req, res) => {
             }
         }
     } else {
-        // ── English Mode: Try Groq Orpheus TTS ──────────────────────
+        // ── English Mode: Try Gemini TTS first (Highly responsive & natural) ────────
+        const geminiKey = process.env.GEMINI_API_KEY || '';
+        const isGeminiHealthy = (nowTime - lastGeminiFailureTime) > TTS_CIRCUIT_BREAKER_MS;
+        if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY' && isGeminiHealthy) {
+            try {
+                const ttsModel = 'gemini-2.5-flash';
+                const ttsVoice = voice || 'Puck'; // Cute, friendly voice perfect for a desktop robot companion
+
+                const gemRes = await fetchWithTimeout(
+                    `https://generativelanguage.googleapis.com/v1beta/models/${ttsModel}:generateContent?key=${geminiKey}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: ttsText }] }],
+                            generationConfig: {
+                                responseModalities: ['AUDIO'],
+                                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: ttsVoice } } }
+                            }
+                        })
+                    },
+                    4500
+                );
+
+                if (gemRes.ok) {
+                    const resData = await gemRes.json();
+                    const audioPart = resData?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+                    if (audioPart) {
+                        const { data: audioBase64, mimeType } = audioPart.inlineData;
+                        console.log(`[TTS] Gemini English TTS OK — length=${audioBase64.length}`);
+                        return res.json({ audio: audioBase64, mimeType });
+                    }
+                } else {
+                    console.warn(`[TTS] Gemini English TTS failed (${gemRes.status})`);
+                    lastGeminiFailureTime = Date.now(); // Trip circuit
+                }
+            } catch (gemErr) {
+                console.warn('[TTS] Gemini English TTS error:', gemErr.message);
+                lastGeminiFailureTime = Date.now(); // Trip circuit
+            }
+        }
+
+        // Secondary fallback for English: Try Groq Orpheus TTS
         const groqKey = process.env.GROQ_API_KEY || '';
         const isGroqHealthy = (nowTime - lastGroqFailureTime) > TTS_CIRCUIT_BREAKER_MS;
         if (groqKey && groqKey !== 'YOUR_GROQ_API_KEY' && isGroqHealthy) {
@@ -693,7 +879,7 @@ app.post('/api/tts', async (req, res) => {
                             response_format: 'mp3'
                         })
                     },
-                    1500
+                    2000
                 );
 
                 if (groqRes.ok) {
@@ -709,48 +895,6 @@ app.post('/api/tts', async (req, res) => {
             } catch (groqErr) {
                 console.warn('[TTS] Groq Orpheus TTS error:', groqErr.message);
                 lastGroqFailureTime = Date.now(); // Trip circuit
-            }
-        }
-
-        // Secondary fallback for English: Try Gemini TTS
-        const geminiKey = process.env.GEMINI_API_KEY || '';
-        const isGeminiHealthy = (Date.now() - lastGeminiFailureTime) > TTS_CIRCUIT_BREAKER_MS;
-        if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY' && isGeminiHealthy) {
-            try {
-                const ttsModel = 'gemini-2.5-flash-preview-tts';
-                const ttsVoice = 'Kore';
-
-                const gemRes = await fetchWithTimeout(
-                    `https://generativelanguage.googleapis.com/v1beta/models/${ttsModel}:generateContent?key=${geminiKey}`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: ttsText }] }],
-                            generationConfig: {
-                                responseModalities: ['AUDIO'],
-                                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: ttsVoice } } }
-                            }
-                        })
-                    },
-                    1500
-                );
-
-                if (gemRes.ok) {
-                    const resData = await gemRes.json();
-                    const audioPart = resData?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-                    if (audioPart) {
-                        const { data: audioBase64, mimeType } = audioPart.inlineData;
-                        console.log(`[TTS] Gemini English TTS OK — length=${audioBase64.length}`);
-                        return res.json({ audio: audioBase64, mimeType });
-                    }
-                } else {
-                    console.warn(`[TTS] Gemini English TTS failed (${gemRes.status})`);
-                    lastGeminiFailureTime = Date.now(); // Trip circuit
-                }
-            } catch (gemErr) {
-                console.warn('[TTS] Gemini English TTS error:', gemErr.message);
-                lastGeminiFailureTime = Date.now(); // Trip circuit
             }
         }
     }
@@ -914,15 +1058,32 @@ async function callGeminiVision(apiKey, systemInstruction, base64Data) {
 }
 
 // ─────────────────────────────────────────────
-//  OpenAI Vision Call
+//  OpenAI Vision Call (Supports OpenRouter redirection)
 // ─────────────────────────────────────────────
 async function callOpenAIVision(apiKey, systemInstruction, base64Data) {
-    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const isOpenRouter = apiKey.startsWith('sk-or-v1-');
+    const isGitHub = apiKey.startsWith('ghp_') || apiKey.startsWith('github_pat_');
+
+    let url = 'https://api.openai.com/v1/chat/completions';
+    let model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+    if (isOpenRouter) {
+        url = 'https://openrouter.ai/api/v1/chat/completions';
+        model = process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
+    } else if (isGitHub) {
+        url = 'https://models.inference.ai.azure.com/chat/completions';
+        model = process.env.GITHUB_MODEL || 'gpt-4o-mini';
+    }
+
+    const response = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
+            'Authorization': `Bearer ${apiKey}`,
+            ...(isOpenRouter ? {
+                'HTTP-Referer': 'http://localhost:3000',
+                'X-Title': 'VILY Companion'
+            } : {})
         },
         body: JSON.stringify({
             model: model,
@@ -942,7 +1103,7 @@ async function callOpenAIVision(apiKey, systemInstruction, base64Data) {
 
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`OpenAI Vision Error (${response.status}): ${errText}`);
+        throw new Error(`OpenAI/OpenRouter/GitHub Vision Error (${response.status}): ${errText}`);
     }
 
     const resData = await response.json();

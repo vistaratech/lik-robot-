@@ -9,12 +9,21 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>LIK — AI Study Companion</title>
     <link rel="stylesheet" href="style.css?v=2.0.0">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <link rel="icon" type="image/png" href="logo.png">
     <!-- Lucide Icons CDN -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Three.js & OrbitControls CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- MediaPipe Hands CDN for RPS Game -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js" crossorigin="anonymous"></script>
+    <!-- TensorFlow.js & COCO-SSD for AI Vision Autonomous Navigation -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js" crossorigin="anonymous"></script>
+    <!-- Tracking.js for Fast Computer Vision Color/Edge Analysis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tracking.js/1.1.3/tracking-min.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -60,9 +69,30 @@
             <button class="modal-btn primary" id="modal-secure-ok-btn" style="margin-top: 15px;">OK, Got it</button>
         </div>
     </div>
+    <!-- Emotion Wheel Modal -->
+    <div class="emotion-wheel-overlay" id="emotion-wheel-overlay">
+        <div class="emotion-wheel" id="emotion-wheel">
+            <!-- Emotion items are positioned in a circle via JS -->
+            <button class="emotion-item" data-emotion="angry" style="top:0;left:50%;transform:translate(-50%,-10%)"><span class="emoji">😤</span>Angry</button>
+            <button class="emotion-item" data-emotion="surprised" style="top:15%;right:0;transform:translate(10%,0)"><span class="emoji">😲</span>Surprise</button>
+            <button class="emotion-item" data-emotion="confused" style="top:55%;right:0;transform:translate(10%,0)"><span class="emoji">😵‍💫</span>Dizzy</button>
+            <button class="emotion-item" data-emotion="sad" style="bottom:0;left:50%;transform:translate(-50%,10%)"><span class="emoji">😢</span>Crying</button>
+            <button class="emotion-item" data-emotion="sleepy" style="top:55%;left:0;transform:translate(-10%,0)"><span class="emoji">😴</span>Sleepy</button>
+            <button class="emotion-item" data-emotion="focused" style="top:15%;left:0;transform:translate(-10%,0)"><span class="emoji">🧐</span>Focused</button>
+            <button class="emotion-item" data-emotion="eureka" style="top:35%;left:50%;transform:translate(-50%,0)"><span class="emoji">💡</span>Eureka</button>
+            <button class="emotion-item" data-emotion="thinking" style="bottom:20%;left:50%;transform:translate(-50%,0)"><span class="emoji">🤔</span>Thinking</button>
+            <button class="emotion-wheel-close" id="emotion-wheel-close">Close</button>
+        </div>
+    </div>
 
     <!-- ═══════ App Shell ═══════ -->
     <div id="app">
+
+        <!-- Floating Brand Logo at Top Left -->
+        <div class="floating-brand" style="position: absolute; top: 22px; left: 24px; z-index: 1000; display: flex; align-items: center; gap: 10px; pointer-events: none;">
+            <img src="logo.png" alt="LIK Logo" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 4px 12px rgba(0,0,0,0.4); object-fit: cover;">
+            <span style="color: var(--text-primary); font-weight: 700; font-size: 15px; letter-spacing: 0.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5);">LIK</span>
+        </div>
 
         <!-- Video Container for Camera Vision Scanning (Picture-in-Picture) -->
         <div class="vision-preview-container" id="vision-preview-wrap">
@@ -73,7 +103,13 @@
                 </button>
             </div>
             <video id="vision-video" autoplay playsinline></video>
+            <canvas id="vision-hud-canvas" class="vision-hud-canvas"></canvas>
         </div>
+
+        <!-- Floating Bluetooth Button -->
+        <button class="floating-menu-btn" id="ble-status-tap" title="Connect LIK via Bluetooth" style="right: 74px;">
+            <i data-lucide="bluetooth"></i>
+        </button>
 
         <!-- Floating Settings/Menu Button -->
         <button class="floating-menu-btn" id="menu-btn" title="Open Controls">
@@ -86,11 +122,100 @@
                 <canvas id="face-canvas"></canvas>
                 <div id="three-container" class="view-hidden"></div>
                 <div class="face-subtitle" id="face-subtitle"></div>
+                <!-- Action Shortcuts Panel -->
+                <div class="face-actions-container">
+                    <button class="face-action-btn" data-action="dance" title="Dance">
+                        <i data-lucide="music"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="nod" title="Nod">
+                        <i data-lucide="thumbs-up"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="shake" title="Shake">
+                        <i data-lucide="help-circle"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="excited" title="Excited">
+                        <i data-lucide="zap"></i>
+                    </button>
+                    <button class="face-action-btn" id="dog-mode-btn" data-action="dog" title="Dog Mode">
+                        <i data-lucide="dog"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="shy" title="Shy">
+                        <i data-lucide="eye-off"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="karaoke" title="Karaoke Mode">
+                        <i data-lucide="mic-vocal"></i>
+                    </button>
+                    <button class="face-action-btn" id="sleep-mode-btn" data-action="sleep" title="Sleep Mode">
+                        <i data-lucide="moon"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="love" title="Love Mode">
+                        <i data-lucide="heart"></i>
+                    </button>
+                    <button class="face-action-btn" id="pong-mode-btn" data-action="pong" title="Mini Game (Pong)">
+                        <i data-lucide="gamepad-2"></i>
+                    </button>
+                    <button class="face-action-btn" id="rps-mode-btn" data-action="rps" title="Rock Paper Scissors">
+                        <i data-lucide="hand"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="colors" title="Color Themes">
+                        <i data-lucide="palette"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="emotions" title="Emotion Wheel">
+                        <i data-lucide="smile-plus"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="photo" title="Photo Mode">
+                        <i data-lucide="camera"></i>
+                    </button>
+                    <button class="face-action-btn" data-action="story" title="Story Mode">
+                        <i data-lucide="book-open"></i>
+                    </button>
+                    <button class="face-action-btn" id="pomodoro-mode-btn" data-action="pomodoro" title="Pomodoro Timer">
+                        <i data-lucide="timer"></i>
+                    </button>
+                    <button class="face-action-btn" id="dj-mode-btn" data-action="dj" title="DJ Mode">
+                        <i data-lucide="disc-3"></i>
+                    </button>
+                </div>
+
+                <!-- Pomodoro Timer Overlay -->
+                <div class="pomodoro-overlay" id="pomodoro-overlay">
+                    <div>
+                        <div class="pomodoro-timer-text" id="pomodoro-timer-text">25:00</div>
+                        <div class="pomodoro-label" id="pomodoro-label">FOCUS TIME</div>
+                    </div>
+                    <button class="pomodoro-stop-btn" id="pomodoro-stop-btn" title="Stop Timer">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+
+                <!-- Pong Score Overlay -->
+                <div class="pong-score-overlay" id="pong-score-overlay">
+                    <span id="pong-score-player">0</span>
+                    <div class="pong-score-divider"></div>
+                    <span id="pong-score-cpu">0</span>
+                    <button class="pong-exit-btn" id="pong-exit-btn" title="Exit Game">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+
+                <!-- RPS Game Overlay -->
+                <div class="rps-overlay" id="rps-overlay">
+                    <span class="rps-emoji" id="rps-player-emoji">✊</span>
+                    <span id="rps-score-player">0</span>
+                    <div class="pong-score-divider"></div>
+                    <span id="rps-score-cpu">0</span>
+                    <span class="rps-emoji" id="rps-cpu-emoji">✊</span>
+                    <span class="rps-round-label" id="rps-round-label">Round 1/5</span>
+                    <button class="pong-exit-btn" id="rps-exit-btn" title="Exit Game">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+
                 <button class="face-mic-btn" id="face-mic-btn" title="Speak to LIK">
                     <i data-lucide="mic"></i>
                 </button>
             </div>
-            <canvas id="voice-wave-canvas" style="position: absolute; top: 25px; left: 25px; width: 90px; height: 25px; pointer-events: none; z-index: 5; opacity: 0; transition: opacity 0.3s;"></canvas>
+            <canvas id="voice-wave-canvas" style="position: absolute; top: 25px; left: 140px; width: 90px; height: 25px; pointer-events: none; z-index: 5; opacity: 0; transition: opacity 0.3s;"></canvas>
             <!-- Collapsible mood label -->
             <div class="mood-label" id="home-mood-wrap">
                 <i id="mood-icon" data-lucide="smile" class="icon-sm text-green"></i>
@@ -101,11 +226,14 @@
         <!-- ────── Unified Control Drawer (Slides from Right) ────── -->
         <div class="control-drawer" id="control-drawer">
             <div class="drawer-header">
-                <div class="drawer-title-wrap">
-                    <h3>LIK Control Center</h3>
-                    <div class="drawer-status-bar">
-                        <div class="status-dot" id="ble-dot" title="Bluetooth Status"></div>
-                        <span class="status-battery" id="battery-text">--</span>
+                <div class="drawer-title-wrap" style="display: flex; align-items: center; gap: 12px;">
+                    <img src="logo.png" alt="LIK Logo" style="width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.1); object-fit: cover;">
+                    <div>
+                        <h3 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--text-primary);">LIK Control Center</h3>
+                        <div class="drawer-status-bar" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+                            <div class="status-dot" id="ble-dot" title="Bluetooth Status"></div>
+                            <span class="status-battery" id="battery-text" style="font-size: 11px; color: var(--text-secondary); line-height: 1;">--</span>
+                        </div>
                     </div>
                 </div>
                 <button class="drawer-close-btn" id="drawer-close-btn" title="Close Panel">
@@ -178,6 +306,94 @@
                         </div>
                         <input type="range" id="rc-speed-slider" min="10" max="100" value="30" class="rc-speed-slider">
                     </div>
+
+                    <!-- ═══════ Autonomous Patrol Panel ═══════ -->
+                    <div class="patrol-panel" id="patrol-panel">
+                        <div class="patrol-header">
+                            <div class="patrol-title-wrap">
+                                <i data-lucide="radar" style="width:18px;height:18px;color:var(--accent-teal,#00f0ff);"></i>
+                                <span class="patrol-title">Autonomous Patrol</span>
+                            </div>
+                            <div class="patrol-status-badge" id="patrol-status-badge">
+                                <span class="patrol-status-dot" id="patrol-status-dot"></span>
+                                <span id="patrol-status-text">Idle</span>
+                            </div>
+                        </div>
+
+                        <!-- Patrol Toggle Button -->
+                        <button class="patrol-toggle-btn" id="patrol-toggle-btn">
+                            <i data-lucide="play" id="patrol-toggle-icon" style="width:18px;height:18px;"></i>
+                            <span id="patrol-toggle-label">Start Patrol</span>
+                        </button>
+
+                        <!-- Patrol Pattern Selector -->
+                        <div class="patrol-patterns">
+                            <span class="patrol-section-label">PATROL PATTERN</span>
+                            <div class="patrol-pattern-chips">
+                                <button class="patrol-chip active" data-pattern="explore" id="patrol-explore">
+                                    <i data-lucide="compass" style="width:14px;height:14px;"></i> Explore
+                                </button>
+                                <button class="patrol-chip" data-pattern="zigzag" id="patrol-zigzag">
+                                    <i data-lucide="trending-up" style="width:14px;height:14px;"></i> Zigzag
+                                </button>
+                                <button class="patrol-chip" data-pattern="sentry" id="patrol-sentry">
+                                    <i data-lucide="shield" style="width:14px;height:14px;"></i> Sentry
+                                </button>
+                                <button class="patrol-chip" data-pattern="orbit" id="patrol-orbit">
+                                    <i data-lucide="rotate-ccw" style="width:14px;height:14px;"></i> Orbit
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Patrol Speed Slider -->
+                        <div class="rc-speed-control" style="margin-top:8px;">
+                            <div class="rc-speed-label">
+                                <span>PATROL SPEED</span>
+                                <span id="patrol-speed-val">40%</span>
+                            </div>
+                            <input type="range" id="patrol-speed-slider" min="15" max="70" value="40" class="rc-speed-slider patrol-slider">
+                        </div>
+
+                        <!-- AI Vision Navigation Monitor -->
+                        <div class="vision-nav-monitor" id="vision-nav-monitor">
+                            <div class="vision-nav-header">
+                                <span class="vision-nav-label"><i data-lucide="eye" style="width:14px;height:14px;color:#00f0ff;"></i> AI VISION NAV</span>
+                                <span class="vision-nav-badge" id="vision-nav-status-badge">Standby</span>
+                            </div>
+                            <!-- 3-Zone Obstacle Radar -->
+                            <div class="vision-radar-grid">
+                                <div class="vision-radar-zone" id="radar-zone-l">
+                                    <div class="radar-bar-wrap"><div class="radar-bar" id="radar-bar-l" style="width:0%;"></div></div>
+                                    <span class="radar-label">LEFT <small id="radar-val-l">0%</small></span>
+                                </div>
+                                <div class="vision-radar-zone center-zone" id="radar-zone-c">
+                                    <div class="radar-bar-wrap"><div class="radar-bar" id="radar-bar-c" style="width:0%;"></div></div>
+                                    <span class="radar-label">CENTER <small id="radar-val-c">0%</small></span>
+                                </div>
+                                <div class="vision-radar-zone" id="radar-zone-r">
+                                    <div class="radar-bar-wrap"><div class="radar-bar" id="radar-bar-r" style="width:0%;"></div></div>
+                                    <span class="radar-label">RIGHT <small id="radar-val-r">0%</small></span>
+                                </div>
+                            </div>
+                            <div class="vision-nav-action-text" id="vision-nav-action-text">Select Explore & Start Patrol to enable visual guidance.</div>
+                        </div>
+
+                        <!-- Patrol Live Stats -->
+                        <div class="patrol-stats">
+                            <div class="patrol-stat">
+                                <i data-lucide="clock" style="width:13px;height:13px;"></i>
+                                <span id="patrol-time">0:00</span>
+                            </div>
+                            <div class="patrol-stat">
+                                <i data-lucide="corner-up-right" style="width:13px;height:13px;"></i>
+                                <span id="patrol-turns">0 turns</span>
+                            </div>
+                            <div class="patrol-stat">
+                                <i data-lucide="alert-triangle" style="width:13px;height:13px;"></i>
+                                <span id="patrol-cliffs">0 cliffs</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ── Tab Content: Chat ── -->
@@ -228,6 +444,7 @@
                                         <button class="quiz-option-btn active" data-provider="gemini" id="provider-gemini">Gemini</button>
                                         <button class="quiz-option-btn" data-provider="openai" id="provider-openai">OpenAI</button>
                                         <button class="quiz-option-btn" data-provider="groq" id="provider-groq">Groq</button>
+                                        <button class="quiz-option-btn" data-provider="cohere" id="provider-cohere">Cohere</button>
                                     </div>
                                 </div>
                             </div>
@@ -263,6 +480,13 @@
                                 <div class="setting-text" style="flex:1;">
                                     <div class="title">Groq API Key</div>
                                     <input type="password" class="setting-input" id="groq-api-key-input" placeholder="Paste your API key here...">
+                                </div>
+                            </div>
+                            <div class="setting-item" style="flex-wrap:wrap;">
+                                <div class="setting-icon purple"><i data-lucide="key"></i></div>
+                                <div class="setting-text" style="flex:1;">
+                                    <div class="title">Cohere API Key</div>
+                                    <input type="password" class="setting-input" id="cohere-api-key-input" placeholder="Paste your API key here...">
                                 </div>
                             </div>
                             <div class="setting-item">
@@ -355,6 +579,20 @@
                                     <div class="desc">Speak replies out loud</div>
                                 </div>
                                 <div class="toggle on" data-setting="Voice TTS" id="toggle-voice-tts"></div>
+                            </div>
+                            <div class="setting-item" style="flex-wrap: wrap;">
+                                <div class="setting-icon purple"><i data-lucide="volume-2"></i></div>
+                                <div class="setting-text" style="flex: 1;">
+                                    <div class="title">Cloud Voice Tone</div>
+                                    <div class="desc">Preferred neural voice tone</div>
+                                    <select id="setting-voice-tone" class="setting-input" style="margin-top: 8px; width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 8px; padding: 6px 10px;">
+                                        <option value="Puck">Puck (Cute, energetic male - default)</option>
+                                        <option value="Aoede">Aoede (Soft, expressive female)</option>
+                                        <option value="Kore">Kore (Clear, professional female)</option>
+                                        <option value="Charon">Charon (Calm, deep male)</option>
+                                        <option value="Fenrir">Fenrir (Friendly, casual male)</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="setting-item">
                                 <div class="setting-icon purple"><i data-lucide="zap"></i></div>

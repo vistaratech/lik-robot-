@@ -31,8 +31,18 @@ const CMD = {
     LED_OFF:        0x12,
     ANIM_PLAY:      0x20,
     ANIM_STOP:      0x21,
+    SET_AUTONOMOUS:     0x30,
+    AUTONOMOUS_STATUS:  0x31,
     HANDSHAKE:      0xFE,
     PING:           0xFF,
+};
+
+// Cliff status codes (from firmware)
+const CLIFF = {
+    NONE:   0x00,
+    LEFT:   0x01,
+    RIGHT:  0x02,
+    BOTH:   0x03,
 };
 
 // Animation IDs
@@ -56,11 +66,18 @@ class BLEManager {
         this.pingInterval = null;
         this.batteryInterval = null;
         
+        // BLE Command Queue & Rate Limiting (Prevents "GATT operation already in progress")
+        this.writeQueue = [];
+        this.isWriting = false;
+        this.lastWriteTime = 0;
+        this.minWriteIntervalMs = 35; // 35ms minimum GATT gap for ESP32 stability
+        
         // Event callbacks
         this.onConnect = null;
         this.onDisconnect = null;
         this.onBattery = null;
         this.onMotorStatus = null;
+        this.onCliffDetected = null;
         this.onLog = null;
     }
 
@@ -172,7 +189,7 @@ class BLEManager {
         // Also write to handshake characteristic directly
         if (this.chars.handshake) {
             const encoder = new TextEncoder();
-            await this.chars.handshake.writeValue(encoder.encode('HELLO'));
+            await this.queueWrite(this.chars.handshake, encoder.encode('HELLO'), null);
             
             // Read handshake response
             try {
@@ -199,6 +216,15 @@ class BLEManager {
                 await this.chars.motorStatus.startNotifications();
                 this.chars.motorStatus.addEventListener('characteristicvaluechanged', (event) => {
                     const data = new Uint8Array(event.target.value.buffer);
+                    
+                    // Check if this is a cliff status notification (8-byte packet with CMD_AUTONOMOUS_STATUS)
+                    if (data.length >= 8 && data[1] === CMD.AUTONOMOUS_STATUS) {
+                        const cliffCode = data[2];
+                        this.log(`Cliff event detected: 0x${cliffCode.toString(16).padStart(2, '0')}`, 'warning');
+                        if (this.onCliffDetected) this.onCliffDetected(cliffCode);
+                        return;
+                    }
+                    
                     if (this.onMotorStatus) this.onMotorStatus(data);
                 });
                 this.log('Subscribed to motor status', 'info');
@@ -257,21 +283,95 @@ class BLEManager {
     }
 
     /**
-     * Write to motor command characteristic
+     * Enqueue BLE characteristic write with rate limiting and command deduplication
+     */
+    async queueWrite(characteristic, data, cmdType = null) {
+        // Check for stable BLE connection before accepting writes
+        if (!characteristic || !this.connected || !this.device || !this.device.gatt || !this.device.gatt.connected) {
+            return false;
+        }
+
+        return new Promise((resolve) => {
+            // Deduplicate/coalesce rapid movement commands (0x01 to 0x07) to avoid queue bloat & latency
+            const isMovementCmd = cmdType !== null && cmdType >= 0x01 && cmdType <= 0x07;
+            if (isMovementCmd) {
+                const existingIdx = this.writeQueue.findIndex(item => item.cmdType === cmdType);
+                if (existingIdx !== -1) {
+                    // Update existing queued packet with freshest values and resolve old promise
+                    this.writeQueue[existingIdx].resolve(true);
+                    this.writeQueue[existingIdx] = { characteristic, data, resolve, cmdType };
+                    this.processWriteQueue();
+                    return;
+                }
+            }
+
+            this.writeQueue.push({ characteristic, data, resolve, cmdType });
+            this.processWriteQueue();
+        });
+    }
+
+    /**
+     * Process queued BLE writes sequentially (One GATT operation at a time)
+     */
+    async processWriteQueue() {
+        if (this.isWriting || this.writeQueue.length === 0 || !this.connected) {
+            return;
+        }
+
+        this.isWriting = true;
+
+        while (this.writeQueue.length > 0 && this.connected) {
+            // Re-verify connection stability
+            if (!this.device || !this.device.gatt || !this.device.gatt.connected) {
+                this.connected = false;
+                break;
+            }
+
+            // Enforce rate limiting between successive GATT writes
+            const now = Date.now();
+            const timeSinceLastWrite = now - this.lastWriteTime;
+            if (timeSinceLastWrite < this.minWriteIntervalMs) {
+                await new Promise(r => setTimeout(r, this.minWriteIntervalMs - timeSinceLastWrite));
+            }
+
+            const { characteristic, data, resolve } = this.writeQueue.shift();
+
+            try {
+                await characteristic.writeValue(data);
+                this.lastWriteTime = Date.now();
+                resolve(true);
+            } catch (err) {
+                // Auto-retry once if browser throws "GATT operation already in progress" or temporary busy
+                if (err.message && err.message.includes('already in progress')) {
+                    await new Promise(r => setTimeout(r, 60));
+                    try {
+                        await characteristic.writeValue(data);
+                        this.lastWriteTime = Date.now();
+                        resolve(true);
+                        continue;
+                    } catch (retryErr) {
+                        this.log(`BLE Write retry failed: ${retryErr.message}`, 'error');
+                    }
+                } else {
+                    this.log(`BLE Write failed: ${err.message}`, 'error');
+                }
+                resolve(false);
+            }
+        }
+
+        this.isWriting = false;
+    }
+
+    /**
+     * Write to motor command characteristic through rate-limited queue
      */
     async writeMotorCmd(packet) {
         if (!this.chars.motorCmd) {
             this.log('Motor command characteristic not available', 'error');
             return false;
         }
-
-        try {
-            await this.chars.motorCmd.writeValue(packet);
-            return true;
-        } catch (err) {
-            this.log(`Write failed: ${err.message}`, 'error');
-            return false;
-        }
+        // packet[1] is the Command byte (CMD)
+        return this.queueWrite(this.chars.motorCmd, packet, packet[1]);
     }
 
     // ─────────────────────────────────────────────
@@ -328,6 +428,11 @@ class BLEManager {
 
     async ping() {
         return this.writeMotorCmd(this.buildPacket(CMD.PING));
+    }
+
+    async setAutonomous(enable) {
+        this.log(`Autonomous safety mode: ${enable ? 'ON' : 'OFF'}`);
+        return this.writeMotorCmd(this.buildPacket(CMD.SET_AUTONOMOUS, enable ? 1 : 0));
     }
 
     // ─────────────────────────────────────────────
@@ -388,6 +493,8 @@ class BLEManager {
      */
     cleanup() {
         this.stopPing();
+        this.writeQueue = [];
+        this.isWriting = false;
         this.connected = false;
         this.handshaked = false;
         this.chars = {};

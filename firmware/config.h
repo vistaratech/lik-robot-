@@ -48,10 +48,11 @@
 #define SERVO_PIN       3     // MG90S Servo control pin
 
 // ─────────────────────────────────────────────
-//  Cliff Sensors (TCRT5000) - Disabled/Unused
+//  Cliff Sensors (TCRT5000) — Active for Autonomous Patrol
 // ─────────────────────────────────────────────
 #define CLIFF_PIN_L     21
 #define CLIFF_PIN_R     22
+#define CLIFF_CHECK_INTERVAL_MS  50   // Check every 50ms during autonomous mode
 
 // ─────────────────────────────────────────────
 //  LED Pins
@@ -121,6 +122,10 @@
 #define CMD_ANIM_PLAY       0x20
 #define CMD_ANIM_STOP       0x21
 
+// Autonomous Patrol Commands
+#define CMD_SET_AUTONOMOUS  0x30  // Enable/disable autonomous safety mode (PARAM1: 1=on, 0=off)
+#define CMD_AUTONOMOUS_STATUS 0x31 // Firmware -> App: cliff event notification
+
 #define CMD_HANDSHAKE       0xFE
 #define CMD_PING            0xFF
 
@@ -130,6 +135,12 @@
 #define ANIM_DANCE          0x03
 #define ANIM_EXCITED        0x04
 #define ANIM_SHY            0x05
+
+// Cliff Status Codes (sent in PARAM1 of CMD_AUTONOMOUS_STATUS)
+#define CLIFF_NONE          0x00
+#define CLIFF_LEFT          0x01
+#define CLIFF_RIGHT         0x02
+#define CLIFF_BOTH          0x03
 
 // ─────────────────────────────────────────────
 //  Timing

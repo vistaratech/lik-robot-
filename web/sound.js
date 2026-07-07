@@ -139,6 +139,68 @@ class RobotSoundEngine {
                 setTimeout(() => this.playBeep(659.25, 80, 'sine', 0.12, 783.99), 90);
                 setTimeout(() => this.playBeep(783.99, 180, 'sine', 0.12, 1046.5), 180);
                 break;
+            case 'bark':
+                this.playBeep(450, 80, 'triangle', 0.15, 300);
+                setTimeout(() => this.playBeep(450, 90, 'triangle', 0.15, 300), 150);
+                break;
+            case 'whine':
+                this.playBeep(900, 400, 'sine', 0.08, 600);
+                break;
+            case 'karaoke':
+                // Upbeat rhythm pattern
+                this.playBeep(523, 80, 'sine', 0.12, 659);
+                setTimeout(() => this.playBeep(659, 80, 'sine', 0.1, 784), 120);
+                setTimeout(() => this.playBeep(784, 100, 'sine', 0.12, 1047), 240);
+                setTimeout(() => this.playBeep(659, 120, 'triangle', 0.1, 523), 380);
+                break;
+            case 'sleep':
+                // Gentle lullaby tones
+                this.playBeep(262, 500, 'sine', 0.04);
+                setTimeout(() => this.playBeep(294, 500, 'sine', 0.03), 600);
+                setTimeout(() => this.playBeep(262, 700, 'sine', 0.025), 1200);
+                break;
+            case 'pong_hit':
+                this.playBeep(800, 40, 'square', 0.08, 600);
+                break;
+            case 'pong_miss':
+                this.playBeep(200, 200, 'sawtooth', 0.1, 80);
+                break;
+            case 'pong_score':
+                this.playBeep(1000, 60, 'sine', 0.12, 1400);
+                setTimeout(() => this.playBeep(1200, 80, 'sine', 0.12, 1600), 80);
+                setTimeout(() => this.playBeep(1400, 120, 'sine', 0.12, 2000), 170);
+                break;
+            case 'pomodoro_alarm':
+                // Alarm bell pattern
+                for (let i = 0; i < 4; i++) {
+                    setTimeout(() => this.playBeep(880, 120, 'sine', 0.15, 1200), i * 250);
+                    setTimeout(() => this.playBeep(1100, 120, 'sine', 0.12, 800), i * 250 + 130);
+                }
+                break;
+            case 'pomodoro_break':
+                // Relaxing chime
+                this.playBeep(523, 200, 'sine', 0.1, 784);
+                setTimeout(() => this.playBeep(659, 300, 'sine', 0.08, 523), 220);
+                break;
+            case 'photo_shutter':
+                // Camera click
+                this.playBeep(2000, 20, 'square', 0.15);
+                setTimeout(() => this.playBeep(1500, 30, 'square', 0.1), 40);
+                break;
+            case 'dj_drop':
+                // Bass drop
+                this.playBeep(80, 300, 'sawtooth', 0.15, 40);
+                setTimeout(() => this.playBeep(60, 500, 'sine', 0.12, 30), 100);
+                setTimeout(() => this.playBeep(120, 80, 'square', 0.1, 200), 400);
+                break;
+            case 'color_cycle':
+                this.playBeep(600, 60, 'sine', 0.08, 900);
+                break;
+            case 'story_start':
+                this.playBeep(440, 100, 'sine', 0.1, 660);
+                setTimeout(() => this.playBeep(550, 100, 'sine', 0.1, 880), 120);
+                setTimeout(() => this.playBeep(660, 200, 'sine', 0.1, 1100), 250);
+                break;
         }
     }
 
@@ -302,10 +364,11 @@ class RobotSoundEngine {
 
         try {
             // ── Step 1: Try Neural TTS via server ──
+            const selectedVoice = localStorage.getItem('lik-voice-tone') || 'Puck';
             const ttsRes = await fetch('/api/tts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, language: voiceLang, voice: 'Kore' })
+                body: JSON.stringify({ text, language: voiceLang, voice: selectedVoice })
             });
 
             if (ttsRes.ok) {
